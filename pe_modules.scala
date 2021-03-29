@@ -10,12 +10,13 @@ import java.io.PrintWriter
 class AddTree(len: Int, width: Int) extends Module{
   def treedep(k: Int): Int = (log10(k-1)/log10(2)).toInt+1
   val io = IO(new Bundle{
-    val in = Input(Valid(Vec(len, UInt(width.W))))
-    val out = Output(Valid(UInt(width.W)))
+    val in = DeqIO(Vec(len, UInt(width.W)))
+    val out = EnqIO(UInt(width.W))
   })
   val dep=treedep(len)
   var newlen=len
   val valids = RegInit(VecInit(Seq.fill(dep)(false.B)))
+  io.in.ready := true.B
   valids(0) := io.in.valid
   for(i <- 1 until dep){
     valids(i) := valids(i-1)
@@ -45,48 +46,65 @@ class AddTree(len: Int, width: Int) extends Module{
   io.out.bits:=regs(dep-1)(0)
   io.out.valid := valids(dep-1)
 }
-class InternalModule(width: Int, stat: Boolean) extends Module{
+class DecBundle(width: Int) extends Bundle{
+  val bits = UInt(width.W)
+  val valid = Bool()
+  val ready = Bool()
+  override def cloneType = (new DecBundle(width)).asInstanceOf[this.type]
+}
+object DecoupledReg{
+  def apply(width: Int)={
+    val x=RegInit({
+      val b = Wire(new DecBundle(width))
+      b.bits := 0.U
+      b.valid := false.B
+      b.ready := true.B
+      b
+    })
+    x
+  }
+}
+class InternalModule(width: Int, stat: Boolean, output: Boolean) extends Module{
   val io = IO(new Bundle{
-    val in = Input(Valid(UInt(width.W)))
-    val out = Output(Valid(UInt(width.W)))
-    val from_pe = Input(Valid(UInt(width.W)))
-    val to_pe = Output(Valid(UInt(width.W)))
-    val sig_in2trans = if(stat)Some(Input(Bool()))else None
+    val in = DeqIO(UInt(width.W))
+    val out = EnqIO(UInt(width.W))
+    val from_pe = if(output) Some(DeqIO(UInt(width.W))) else None
+    val to_pe = EnqIO(UInt(width.W))
     val sig_stat2trans = if(stat)Some(Input(Bool()))else None
   })
 }
 object InternalModule{
-  def apply(dataflow: TensorDataflow, io_type: Boolean, width: Int){
+  def apply(dataflow: TensorDataflow, io_type: Boolean, width: Int, latency: Int){
     dataflow match {
       case DirectDataflow => if(io_type) new DirectInput(width) else new DirectOutput(width)
       case SystolicDataflow => if(io_type) new SystolicInput(width) else new SystolicOutput(width)
-      case StationaryDataflow => if(io_type) new StationaryInput(width) else new StationaryOutput(width)
+      case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_Pipeline(width, latency)
     }
   }
 }
-class SystolicInput(width: Int) extends InternalModule(width, false){
-  val reg = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  reg := io.in
-  io.out := reg
-  io.to_pe := reg
+class SystolicInput(width: Int) extends InternalModule(width, false, false){
+  val reg = DecoupledReg(width)
+  reg <> io.in
+  io.out <> reg
+  io.to_pe <> reg
 }
-class DirectInput(width: Int) extends InternalModule(width, false){
-  val reg = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  reg := io.in
+class DirectInput(width: Int) extends InternalModule(width, false, false){
+  val reg = DecoupledReg(width)
+  reg <> io.in
   io.to_pe := reg
   io.out := io.in
 }
-class DirectOutput(width: Int) extends InternalModule(width, false){
-  io.out := io.from_pe
-  io.to_pe.bits := 0.U
-  io.to_pe.valid := true.B
+class DirectOutput(width: Int) extends InternalModule(width, false, true){
+  io.out <> io.from_pe.get
+  io.to_pe.bits <> 0.U
+  io.to_pe.valid <> true.B
 }
-class SystolicOutput(width: Int) extends InternalModule(width, false){
+class SystolicOutput(width: Int) extends InternalModule(width, false, true){
 
-  val reg = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  reg := io.in
-  io.to_pe := reg
-  io.out := io.from_pe
+  val reg = DecoupledReg(width)
+  reg <> io.in
+  io.to_pe <> reg
+  io.out <> io.from_pe.get
 }
 
 /*
@@ -98,40 +116,72 @@ stat表示用于PE计算的寄存器，trans表示用来传输的寄存器。当
 
 
 */
-class StationaryInput(width: Int) extends InternalModule(width, true){
-  val trans = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  val stat = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  val reg_in2trans = RegInit(false.B)
+
+
+class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, false){
+  val trans = DecoupledReg(width)
+  
+
+  val update = RegInit(Valid(VecInit(Seq.fill(latency)(0.U.asTypeOf(UInt(width.W))))))
+  //val stat_C = Module(new RegIO(m*n,width))
+  val stat = RegInit(Valid(VecInit(Seq.fill(latency)(0.U.asTypeOf(UInt(width.W))))))
   val reg_stat2trans = RegInit(false.B)
-  reg_in2trans := io.sig_in2trans.get
-  reg_stat2trans := io.sig_stat2trans.get
-  io.out := trans
-  io.to_pe.bits := stat.bits
-  when(reg_in2trans){
-    trans := io.in
+  val write_trans_pos = RegInit(0.U(4.W))
+  val read_stat_pos = RegInit(0.U(4.W))
+  io.out.valid := update.valid  //  update写满了，写入下一个buffer
+  io.out.bits := trans.bits
+  // update没更新完，且trans发送数据给update
+  write_trans_pos := Mux(!update.valid, Mux(write_trans_pos+trans.valid.asUInt===latency.asUInt, 0.U, write_trans_pos+trans.valid.asUInt), write_trans_pos)
+  // 运算时，每次读取不同的stat
+  read_stat_pos := Mux(stat.valid, Mux(read_stat_pos+1.U===latency.asUInt, 0.U, read_stat_pos+1.U),read_stat_pos)
+  when(write_trans_pos===(latency-1).asUInt && trans.valid){
+    update.valid := true.B
   }
+  reg_stat2trans := io.sig_stat2trans.get
+  //printf("%d %d, %d %d\n",io.in.bits, reg_in2trans, stat.bits, trans.bits
+  trans <> io.in
   when(reg_stat2trans){
-    stat := trans
+    stat := update
+    update.valid :=false.B
   }
   io.to_pe.valid := stat.valid
+  io.to_pe.bits := stat.bits(read_stat_pos)
 }
-class StationaryOutput(width: Int) extends InternalModule(width, true){
 
+class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, true){
+
+  //val trans = RegInit(0.U.asTypeOf(Decoupled(UInt(width.W))))
   val trans = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
+  val stat = Module(new Queue(UInt(width.W),latency))
+  //when(io.out.ready){    // next 
+    when(stat.io.count===0.U){
+      trans.valid := io.in.valid
+      trans.bits := io.in.bits
+    }.elsewhen(stat.io.deq.ready){
+      trans.valid := stat.io.deq.valid
+      trans.bits := stat.io.deq.bits
+    }
+  //}
+  stat.io.deq.ready := io.out.ready || (!trans.valid)
+  io.in.ready := (stat.io.count===0.U)
   //val stat_C = Module(new RegIO(m*n,width))
-  val stat = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  val reg_in2trans = RegInit(false.B)
+  //val stat = RegInit(VecInit(Seq.fill(latency)(0.U.asTypeOf(Decoupled(UInt(width.W))))))
   val reg_stat2trans = RegInit(false.B)
-  reg_in2trans := io.sig_in2trans.get
   reg_stat2trans := io.sig_stat2trans.get
-  //printf("%d %d\n",stat_C, trans_C)
-  io.out:=trans
-  stat := io.from_pe
+  printf("%d %d\n",reg_stat2trans,io.from_pe.get.bits)
+  printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
+  io.out.valid := trans.valid
+  io.out.bits := trans.bits
+  //stat := io.from_pe
   when(reg_stat2trans){
-    trans := stat
-  }.elsewhen(reg_in2trans){
-    trans := io.in
+    stat.io.enq.bits := io.from_pe.get.bits
+    stat.io.enq.valid := io.from_pe.get.valid
+    //trans := stat
+  }.otherwise{
+    stat.io.enq.bits := 0.U
+    stat.io.enq.valid := false.B
   }
   io.to_pe.valid := true.B
-  io.to_pe.bits := Mux(reg_stat2trans, 0.U, stat.bits)
+  io.to_pe.bits := Mux(reg_stat2trans, 0.U, io.from_pe.get.bits)
+  io.from_pe.get.ready := true.B
 }
