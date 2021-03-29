@@ -56,10 +56,10 @@ class MultiDimTime(dim: Array[Int], init: Array[Int]) extends Module{
     io.out(i) := regs(i)
   }
 }
-class MultiDimMem(dim: Array[Int], size: Int, dw: Int) extends Module{
-  val len = dim.length
+class MultiDimMem(wr_dim: Array[Int], rd_dim: Array[Int], size: Int, dw: Int) extends Module{
+  val len = wr_dim.length
   val width = for(i <- 0 until len)yield{
-    ceil(log(dim(i)+1)).toInt
+    scala.math.max(ceil(log(wr_dim(i)+1)).toInt,ceil(log(rd_dim(i)+1)).toInt)
   }
   val io = IO(new Bundle{
     val rd_addr = Input(Valid(new HeterogeneousBag(
@@ -73,7 +73,7 @@ class MultiDimMem(dim: Array[Int], size: Int, dw: Int) extends Module{
   })
   val mem = SyncReadMem(size, UInt(dw.W))
   val rd_part_addr = (0 until len).map(i=>{
-    dim(i).asUInt * io.rd_addr.bits(i)
+    rd_dim(i).asUInt * io.rd_addr.bits(i)
   })
   val rd_addr_reg = RegInit(0.U.asTypeOf(chiselTypeOf(io.rd_addr)))
   rd_addr_reg.valid := io.rd_addr.valid
@@ -83,10 +83,13 @@ class MultiDimMem(dim: Array[Int], size: Int, dw: Int) extends Module{
   io.rd_data.valid := RegNext(rd_addr_reg.valid, false.B)
   io.rd_data.bits := mem.read(rd_addr_reg.bits.reduce(_+_),rd_addr_reg.valid)
   val wr_part_addr = (0 until len).map(i=>{
-    dim(i).asUInt * io.wr_addr.bits(i)
+    wr_dim(i).asUInt * io.wr_addr.bits(i)
   })
   val wr_addr_reg = RegInit(0.U.asTypeOf(chiselTypeOf(io.wr_addr)))
-  wr_addr_reg.valid := io.wr_addr.valid
+  wr_addr_reg.valid := RegNext(io.wr_addr.valid, false.B)
+  for(i <- 0 until len){
+    wr_addr_reg.bits(i) := wr_part_addr(i)
+  }
   val wr_data_reg = RegNext(io.wr_data, 0.U.asTypeOf(chiselTypeOf(io.wr_data)))
   when(wr_addr_reg.valid){
     mem.write(wr_addr_reg.bits.reduce(_+_), wr_data_reg)
