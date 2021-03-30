@@ -50,10 +50,10 @@ class PEArray_Mem extends Module{
     println("df",i,df(i).foreach(x=>print(x)))
   }
   val pe_size = (10, 16)
-  val mat_len = 64
+  val mat_len = 256
   val latency = 4
   val rnd = new scala.util.Random
-  val num_buffer = 4
+  val num_buffer = 20
   // access: latency * dim * double
   val num_operand = 3
   val mem_dim = Array(1, latency, latency*mat_len)
