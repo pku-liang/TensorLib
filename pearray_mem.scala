@@ -13,6 +13,7 @@ class MemController(
   // low -- high
   mem_size: Int,
   data_width: Int,
+  addr_width: Int,
   wr_dim: Array[Int],
   rd_dim: Array[Int],
   wr_pattern: Array[Int],
@@ -20,9 +21,9 @@ class MemController(
   wr_init: Array[Int],
   rd_init: Array[Int]
   ) extends Module{
-  val mem = Module(new MultiDimMem(wr_dim, rd_dim, mem_size, data_width)).io
-  val wr_time = Module(new MultiDimTime(wr_pattern,wr_init)).io
-  val rd_time = Module(new MultiDimTime(rd_pattern,rd_init)).io
+  val mem = Module(new MultiDimMem(addr_width,wr_dim, rd_dim, mem_size, data_width)).io
+  val wr_time = Module(new MultiDimTime(addr_width,wr_pattern,wr_init)).io
+  val rd_time = Module(new MultiDimTime(addr_width,rd_pattern,rd_init)).io
   val io = IO(new Bundle{
     val rd_valid = Input(Bool())
     val wr_valid = Input(Bool())
@@ -53,7 +54,7 @@ class PEArray_Mem extends Module{
   val mat_len = 256
   val latency = 4
   val rnd = new scala.util.Random
-  val num_buffer = 20
+  val num_buffer = 8
   // access: latency * dim * double
   val num_operand = 3
   val mem_dim = Array(1, latency, latency*mat_len)
@@ -63,6 +64,7 @@ class PEArray_Mem extends Module{
   val mem_out_size = latency*pe_size._2*num_buffer
   val mem_size = latency*mat_len*num_buffer
   val data_width = Array(32, 32, 32)
+  val addr_width = 20
   val simd = Array(1,8,8)
   val simd_width = (0 until 3).map(i=>data_width(i) * simd(i))
   val rd_init = Array(0,0,0)
@@ -75,9 +77,9 @@ class PEArray_Mem extends Module{
     val rd_output = Input(Bool())
   })
   
-  val mat1_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_size, simd_width(0), mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
-  val mat2_mem = Seq.fill(pe_size._2)(Module(new MemController(mem_size, simd_width(1), mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
-  val matout_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_out_size, simd_width(2), mem_out_dim, mem_out_dim, mem_out_time, mem_out_time,wr_init, rd_init)).io)
+  val mat1_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_size, simd_width(0), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
+  val mat2_mem = Seq.fill(pe_size._2)(Module(new MemController(mem_size, simd_width(1), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
+  val matout_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_out_size, simd_width(2), addr_width,mem_out_dim, mem_out_dim, mem_out_time, mem_out_time,wr_init, rd_init)).io)
 
   // // mem to pe connection
   // val mat1_rd_time = Seq.fill(pe_size._1)(Module(new MultiDimTime(Array(mat_len, latency, num_buffer),rd_init)).io)

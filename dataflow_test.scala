@@ -55,7 +55,7 @@ class Test_OS_Top extends Module{
   
   m.work := true.B
   m.stage_cycle := stage_cycle.U
-  val output_time = Seq.fill(3)(Module(new MultiDimTime(Array(latency, pe_size._2), Array(0,0))).io)
+  val output_time = Seq.fill(3)(Module(new MultiDimTime(12,Array(latency, pe_size._2), Array(0,0))).io)
   for(j <- 0 until pe_size._1){
     m.data(0)(j).valid := true.B
     m.data(0)(j).bits := Mux(cycle>=j.asUInt && cycle<(mat_len * latency).U+j.asUInt, mat1_reg(j)(cycle-j.asUInt), 0.U)
