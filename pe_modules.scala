@@ -168,8 +168,8 @@ class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule
   //val stat = RegInit(VecInit(Seq.fill(latency)(0.U.asTypeOf(Decoupled(UInt(width.W))))))
   val reg_stat2trans = RegInit(false.B)
   reg_stat2trans := io.sig_stat2trans.get
-  printf("%d %d\n",reg_stat2trans,io.from_pe.get.bits)
-  printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
+  //printf("%d %d\n",reg_stat2trans,io.from_pe.get.bits)
+  //printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
   io.out.valid := trans.valid
   io.out.bits := trans.bits
   //stat := io.from_pe

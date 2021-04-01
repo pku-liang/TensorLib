@@ -30,7 +30,7 @@ class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io
       case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_Pipeline(width, latency)
     }
   }
-  //val exec_cycle = RegInit(0.U(10.W))
+  //val exec_cycle = RegInit(0.U(20.W))
 
   val pe = 
     if(op_type==0)
@@ -85,8 +85,10 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
   var num_io_banks = Array.fill(num_op)(0)
   // pe connection, calculate bank number
   for(i <- 0 until num_op){
+    
     val dirx = if(dataflows(i)==StationaryDataflow) -1 else stt(i)(0)
     val diry = if(dataflows(i)==StationaryDataflow) 0 else stt(i)(1)
+    println(i, dirx, diry)
     // connection ports
     if(io_type(i) ||(dataflows(i)!=DirectDataflow)){   // direct output use reduction tree
       for(j <- 0 until pe_h){
@@ -129,14 +131,14 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
           Vec(num_io_banks(i), EnqIO(UInt((vec(i) * width(i)).W)))
     })
     val work = Input(Bool())
-    val stage_cycle = Input(UInt(10.W))
+    val stage_cycle = Input(UInt(20.W))
   })
-  // val cur_cycle = RegInit(VecInit(Seq.fill(pe_h * pe_w)(0.U(10.W))))
+  // val cur_cycle = RegInit(VecInit(Seq.fill(pe_h * pe_w)(0.U(20.W))))
   // when(io.work){
   //   for(i <- 0 until pe_h * pe_w)
   //     cur_cycle(i) := Mux(cur_cycle(i) + 1.U === io.stage_cycle, 0.U, cur_cycle(i) + 1.U)
   // }
-  val cur_cycle = RegInit(0.U(10.W))
+  val cur_cycle = RegInit(0.U(20.W))
   when(io.work){
     cur_cycle := Mux(cur_cycle + 1.U === io.stage_cycle, 0.U, cur_cycle + 1.U)
   }

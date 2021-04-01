@@ -52,7 +52,7 @@ class PEArray_Mem extends Module{
   }
   val pe_size = (10, 16)
   val mat_len = 256
-  val latency = 4
+  val latency = 12
   val rnd = new scala.util.Random
   val num_buffer = 8
   // access: latency * dim * double
@@ -75,6 +75,7 @@ class PEArray_Mem extends Module{
     val mat2_wr = Input(Vec(pe_size._2, Valid(UInt(simd_width(1).W))))
     val mat2_rd = Output(Vec(pe_size._1, Valid(UInt(simd_width(2).W))))
     val rd_output = Input(Bool())
+    val stage_cycle = Input(UInt(20.W))
   })
   
   val mat1_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_size, simd_width(0), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
@@ -99,7 +100,7 @@ class PEArray_Mem extends Module{
   val io_type = Array(true,true,false)
   val pes = Module(new PEArray2D(pe_size._1,pe_size._2,simd, data_width, df,io_type,num_operand, latency, op_type)).io
   pes.work := io.work
-  pes.stage_cycle := (mat_len*latency).asUInt
+  pes.stage_cycle := io.stage_cycle//(mat_len*latency).asUInt
   mat1_rd_valid(0) := io.work
   for(i <- 1 until pe_size._1){
     mat1_rd_valid(i) := mat1_rd_valid(i-1)
