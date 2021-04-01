@@ -54,7 +54,7 @@ class PEArray_Mem extends Module{
   val mat_len = 256
   val latency = 12
   val rnd = new scala.util.Random
-  val num_buffer = 8
+  val num_buffer = 2
   // access: latency * dim * double
   val num_operand = 3
   val mem_dim = Array(1, latency, latency*mat_len)
