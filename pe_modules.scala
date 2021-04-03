@@ -84,9 +84,13 @@ object InternalModule{
 }
 class SystolicInput(width: Int) extends InternalModule(width, false, false){
   val reg = DecoupledReg(width)
+  val to_pe_delay1 = DecoupledReg(width)
+  val to_pe_delay2 = DecoupledReg(width)
+  to_pe_delay1 := reg
+  to_pe_delay2 := to_pe_delay1
   reg <> io.in
   io.out <> reg
-  io.to_pe <> reg
+  io.to_pe <> to_pe_delay2
 }
 class DirectInput(width: Int) extends InternalModule(width, false, false){
   val reg = DecoupledReg(width)

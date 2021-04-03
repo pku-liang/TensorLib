@@ -106,7 +106,7 @@ class PEArray_Mem extends Module{
     mat1_rd_valid(i) := mat1_rd_valid(i-1)
   }
   mat2_rd_valid(0) := io.work
-  for(i <- 1 until pe_size._1){
+  for(i <- 1 until pe_size._2){
     mat2_rd_valid(i) := mat2_rd_valid(i-1)
   }
 
