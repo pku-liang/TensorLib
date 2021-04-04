@@ -122,9 +122,9 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   val trans = DecoupledReg(width)
   
 
-  val update = RegInit(Valid(VecInit(Seq.fill(latency)(0.U.asTypeOf(UInt(width.W))))))
+  val update = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
   //val stat_C = Module(new RegIO(m*n,width))
-  val stat = RegInit(Valid(VecInit(Seq.fill(latency)(0.U.asTypeOf(UInt(width.W))))))
+  val stat = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
   val reg_stat2trans = RegInit(false.B)
   val write_trans_pos = RegInit(0.U(4.W))
   val read_stat_pos = RegInit(0.U(4.W))
@@ -132,6 +132,8 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   io.out.bits := trans.bits
   // update没更新完，且trans发送数据给update
   write_trans_pos := Mux(!update.valid, Mux(write_trans_pos+trans.valid.asUInt===latency.asUInt, 0.U, write_trans_pos+trans.valid.asUInt), write_trans_pos)
+
+  printf("trans:%d, write_pos:%d, update: %d, to_PE:%d\n",trans.valid, write_trans_pos, update.valid, io.to_pe.valid)
   // 运算时，每次读取不同的stat
   read_stat_pos := Mux(stat.valid, Mux(read_stat_pos+1.U===latency.asUInt, 0.U, read_stat_pos+1.U),read_stat_pos)
   when(write_trans_pos===(latency-1).asUInt && trans.valid){

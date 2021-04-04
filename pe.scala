@@ -86,7 +86,12 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
   // pe connection, calculate bank number
   for(i <- 0 until num_op){
     
-    val dirx = if(dataflows(i)==StationaryDataflow) -1 else stt(i)(0)
+    val dirx = if(dataflows(i)==StationaryDataflow){
+      if(io_type(i))
+        1
+      else
+        -1
+    }else stt(i)(0)
     val diry = if(dataflows(i)==StationaryDataflow) 0 else stt(i)(1)
     println(i, dirx, diry)
     // connection ports
@@ -143,7 +148,12 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
     cur_cycle := Mux(cur_cycle + 1.U === io.stage_cycle, 0.U, cur_cycle + 1.U)
   }
   for(i <- 0 until num_op){
-    val dirx = if(dataflows(i)==StationaryDataflow) -1 else stt(i)(0)
+    val dirx = if(dataflows(i)==StationaryDataflow){
+      if(io_type(i))
+        1
+      else
+        -1
+    }else stt(i)(0)
     val diry = if(dataflows(i)==StationaryDataflow) 0 else stt(i)(1)
     var bank_id = 0
     // input ports

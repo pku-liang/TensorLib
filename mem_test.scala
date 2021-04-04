@@ -16,7 +16,7 @@ class Test_Mem extends Module{
   val mat_len = 256
   val latency = 4
   val rnd = new scala.util.Random
-  val num_buffer = 8
+  val num_buffer = 2
   // access: latency * dim * double
   val num_operand = 3
   val rd_init = Array(0,0,0)
