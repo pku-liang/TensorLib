@@ -152,6 +152,7 @@ class ComputeCell_Latency(vec: Array[Int], width: Int, latency: Int) extends Mod
   val vec_b = Wire(Vec(vec(1), UInt(width.W)))
   val vec_c_in = Wire(Vec(vec(2), UInt(width.W)))
   val vec_c_out = Wire(Vec(vec(2), UInt(width.W)))
+  //printf("pe_a: %d, pe_b: %d, pe_c: %d, pe_out: %d\n",vec_a(0),vec_b(0),vec_c_in(0),vec_c_out(0))
   val delay_a = ShiftRegister(vec_a, latency, 0.U.asTypeOf(Vec(vec(0), UInt(width.W))), true.B)
   val delay_b = ShiftRegister(vec_b, latency, 0.U.asTypeOf(Vec(vec(1), UInt(width.W))), true.B)
   val delay_c = ShiftRegister(vec_c_in, latency, 0.U.asTypeOf(Vec(vec(2), UInt(width.W))), true.B)

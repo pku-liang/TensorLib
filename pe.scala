@@ -175,7 +175,10 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
           }
           if((j-diry >= pe_h || j-diry < 0 || k-dirx >= pe_w || k-dirx < 0)||(dirx == 0 && diry == 0)){
             pes(j)(k).data(i).in.bits := 0.U
-            pes(j)(k).data(i).in.valid := false.B
+            if(dataflows(i)==StationaryDataflow)
+              pes(j)(k).data(i).in.valid := false.B
+            else
+              pes(j)(k).data(i).in.valid := true.B
           }
         }
       }
@@ -241,7 +244,12 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
     for(j <- 0 until pe_h){
       for(k <- 0 until pe_w){
         if(dataflows(i)==StationaryDataflow){
-          pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j+k) //(cur_cycle === 0.asUInt)
+          if(io_type(i)){
+            pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
+          }else{// output
+            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j+k) //(cur_cycle === 0.asUInt)
+          }
+          
         }
       }
     }

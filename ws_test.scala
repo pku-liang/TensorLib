@@ -59,7 +59,7 @@ class Test_WS_Top extends Module{
   val matout_reg = for(i <- 0 until pe_size._1) yield{
     RegInit(VecInit(Seq.fill(pe_size._2*latency)(0.U(20.W))))
   }
-  val cycle = RegInit(0.U(20.W))
+  val cycle = RegInit(1.U(20.W))
   val stage_cycle = mat_len * latency + pe_size._1 + pe_size._2
   cycle := Mux(cycle ===stage_cycle.U, 0.U, cycle + 1.U)
   val m = Module(new PEArray2D(pe_size._1,pe_size._2,Array(1,1,1), Array(32,32,32), df,Array(true, true, false),3, latency, 1)).io
@@ -74,7 +74,7 @@ class Test_WS_Top extends Module{
   for(j <- 0 until pe_size._1){
     val input_weight_cond = cycle>=1.asUInt && cycle<(pe_size._2 * latency+1).U
     m.data(0)(j).valid := input_weight_cond
-    m.data(0)(j).bits := Mux(input_weight_cond, mat1_reg(j)(cycle-1.asUInt), 0.U)
+    m.data(0)(j).bits := Mux(load_input, 2.U, 1.U)//Mux(input_weight_cond, mat1_reg(j)(cycle-1.asUInt), 0.U)
     m.data(2)(j).ready := true.B
     
     output_time(j).in := m.data(2)(j).valid
@@ -84,7 +84,7 @@ class Test_WS_Top extends Module{
   }
   for(j <- 0 until pe_size._2){
     m.data(1)(j).valid := true.B
-    m.data(1)(j).bits := Mux(load_input && cycle>=j.asUInt && cycle<(mat_len * latency).U+j.asUInt, mat2_reg(j)(cycle-j.asUInt), 0.U)
+    m.data(1)(j).bits := 1.U//Mux(load_input && cycle>=j.asUInt && cycle<(mat_len * latency).U+j.asUInt, mat2_reg(j)(cycle-j.asUInt), 0.U)
   }
   printf("cycle=%d, input: ", cycle)
   for(j <- 0 until pe_size._1){

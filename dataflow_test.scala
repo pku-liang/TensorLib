@@ -89,12 +89,9 @@ class Test_OS_Top extends Module{
 
 object Gen_PEArray_MEM extends App{
   val str = chisel3.Driver.emitVerilog(new PEArray_Mem())
-  new PrintWriter("PEArray_mem.v") { write(str); close }
+  new PrintWriter("PEArray_mem_l6.v") { write(str); close }
 }
-object Gen_PEArray_MEMSmall extends App{
-  val str = chisel3.Driver.emitVerilog(new PEArray_MemSmall())
-  new PrintWriter("PEArray_memsmall.v") { write(str); close }
-}
+
 object Test_OS_App extends App{
   Driver(() => new Test_OS_Top())(c => new Test_OS_Tester(c))
 }

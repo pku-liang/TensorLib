@@ -109,6 +109,7 @@ class SystolicOutput(width: Int) extends InternalModule(width, false, true){
   reg <> io.in
   io.to_pe <> reg
   io.out <> io.from_pe.get
+  //printf("to pe:%d %d,from pe:%d %d\n",io.to_pe.valid, io.to_pe.bits, io.from_pe.get.valid, io.from_pe.get.bits)
 }
 
 /*
@@ -136,8 +137,10 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   io.out.bits := trans.bits
   // update没更新完，且trans发送数据给update
   write_trans_pos := Mux(!update.valid, Mux(write_trans_pos+trans.valid.asUInt===latency.asUInt, 0.U, write_trans_pos+trans.valid.asUInt), write_trans_pos)
-
-  printf("trans:%d, write_pos:%d, update: %d, to_PE:%d\n",trans.valid, write_trans_pos, update.valid, io.to_pe.valid)
+  when((!update.valid) && trans.valid){
+    update.bits(write_trans_pos) := trans.bits
+  }
+  printf("trans:%d %d, write_pos:%d, update: %d, stat: %d, read_stat_pos: %d, to_PE:%d, %d\n",trans.valid, trans.bits, write_trans_pos, update.valid, stat.valid,read_stat_pos, io.to_pe.valid, io.to_pe.bits)
   // 运算时，每次读取不同的stat
   read_stat_pos := Mux(stat.valid, Mux(read_stat_pos+1.U===latency.asUInt, 0.U, read_stat_pos+1.U),read_stat_pos)
   when(write_trans_pos===(latency-1).asUInt && trans.valid){
