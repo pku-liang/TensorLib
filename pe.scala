@@ -254,6 +254,7 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
       }
     }
   }
+  printf("cycle=%d\n",cur_cycle)
   // printf("cycle:%d\n",cur_cycle)
   // for(i <- 0 until 4){
   //   for(j <- 0 until 4){

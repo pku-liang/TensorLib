@@ -60,8 +60,8 @@ class Test_WS_Top extends Module{
     RegInit(VecInit(Seq.fill(pe_size._2*latency)(0.U(20.W))))
   }
   val cycle = RegInit(1.U(20.W))
-  val stage_cycle = mat_len * latency + pe_size._1 + pe_size._2
-  cycle := Mux(cycle ===stage_cycle.U, 0.U, cycle + 1.U)
+  val stage_cycle = mat_len * latency
+  cycle := Mux(cycle ===(stage_cycle-1).U, 0.U, cycle + 1.U)
   val m = Module(new PEArray2D(pe_size._1,pe_size._2,Array(1,1,1), Array(32,32,32), df,Array(true, true, false),3, latency, 1)).io
   val load_input = RegInit(false.B)
   when(cycle===0.U){

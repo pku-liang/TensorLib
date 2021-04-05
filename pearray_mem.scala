@@ -161,9 +161,9 @@ class PEArray_Mem_WS extends Module{
   })
 
 
-  val matst_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_st_size, simd_width(2), addr_width,mem_st_dim, mem_st_dim, mem_st_time, mem_st_time,wr_init, rd_init)).io)
-  val mat1_mem = Seq.fill(pe_size._2)(Module(new MemController(mem_size, simd_width(0), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
-  val mat2_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_size, simd_width(1), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
+  val matst_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_st_size, simd_width(0), addr_width,mem_st_dim, mem_st_dim, mem_st_time, mem_st_time,wr_init, rd_init)).io)
+  val mat1_mem = Seq.fill(pe_size._2)(Module(new MemController(mem_size, simd_width(1), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
+  val mat2_mem = Seq.fill(pe_size._1)(Module(new MemController(mem_size, simd_width(2), addr_width,mem_dim, mem_dim, mem_time, mem_time,rd_init, wr_init )).io)
   
   val matst_rd_valid = Seq.fill(pe_size._1)(RegInit(false.B))
   val mat1_rd_valid = Seq.fill(pe_size._2)(RegInit(false.B))
