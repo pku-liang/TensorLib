@@ -193,8 +193,8 @@ class PEArray_Mem_WS extends Module{
     mat2_mem(i).rd_valid := io.rd_output
     mat2_mem(i).wr_valid := pes.data(2)(i).valid
     mat2_mem(i).wr_data := pes.data(2)(i).bits
-    io.mat2_rd(i).valid := pes.data(2)(i).valid
-    io.mat2_rd(i).bits := pes.data(2)(i).bits
+    io.mat2_rd(i).valid := mat2_mem(i).rd_data.valid
+    io.mat2_rd(i).bits := mat2_mem(i).rd_data.bits
     pes.data(2)(i).ready := true.B
   }
   for(i <- 0 until pe_size._2){
