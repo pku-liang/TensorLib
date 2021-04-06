@@ -52,7 +52,7 @@ class PEArray_Mem extends Module{
   }
   val pe_size = (10, 16)
   val mat_len = 256
-  val latency = 6
+  val latency = 12
   val rnd = new scala.util.Random
   val num_buffer = 2
   // access: latency * dim * double
@@ -109,8 +109,8 @@ class PEArray_Mem extends Module{
     matout_mem(i).rd_valid := io.rd_output
     matout_mem(i).wr_valid := pes.data(2)(i).valid
     matout_mem(i).wr_data := pes.data(2)(i).bits
-    io.matout_rd(i).valid := pes.data(2)(i).valid
-    io.matout_rd(i).bits := pes.data(2)(i).bits
+    io.matout_rd(i).valid := matout_mem(i).rd_data.valid
+    io.matout_rd(i).bits := matout_mem(i).rd_data.bits
     pes.data(2)(i).ready := true.B
   }
   for(i <- 0 until pe_size._2){
