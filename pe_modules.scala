@@ -71,6 +71,7 @@ class InternalModule(width: Int, stat: Boolean, output: Boolean) extends Module{
     val from_pe = if(output) Some(DeqIO(UInt(width.W))) else None
     val to_pe = EnqIO(UInt(width.W))
     val sig_stat2trans = if(stat)Some(Input(Bool()))else None
+    val sig_stat2trans_out = if(stat)Some(Output(Bool()))else None
   })
 }
 object InternalModule{
@@ -130,7 +131,8 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   val update = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
   //val stat_C = Module(new RegIO(m*n,width))
   val stat = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
-  val reg_stat2trans = RegInit(false.B)
+  val reg_stat2trans = RegInit(0.U.asTypeOf(Vec(latency+1, Bool())))
+  //false.B)
   val write_trans_pos = RegInit(0.U(4.W))
   val read_stat_pos = RegInit(0.U(4.W))
   io.out.valid := update.valid  //  update写满了，写入下一个buffer
@@ -146,15 +148,16 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   when(write_trans_pos===(latency-1).asUInt && trans.valid){
     update.valid := true.B
   }
-  reg_stat2trans := io.sig_stat2trans.get
+  reg_stat2trans(0) := io.sig_stat2trans.get
   //printf("%d %d, %d %d\n",io.in.bits, reg_in2trans, stat.bits, trans.bits
   trans <> io.in
-  when(reg_stat2trans){
+  when(reg_stat2trans(0)){
     stat := update
     update.valid :=false.B
   }
   io.to_pe.valid := stat.valid
   io.to_pe.bits := stat.bits(read_stat_pos)
+  io.sig_stat2trans_out.get := reg_stat2trans(latency)
 }
 
 class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, true){
@@ -177,6 +180,7 @@ class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule
   //val stat = RegInit(VecInit(Seq.fill(latency)(0.U.asTypeOf(Decoupled(UInt(width.W))))))
   val reg_stat2trans = RegInit(false.B)
   reg_stat2trans := io.sig_stat2trans.get
+  io.sig_stat2trans_out.get := reg_stat2trans
   //printf("%d %d\n",reg_stat2trans,io.from_pe.get.bits)
   //printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
   io.out.valid := trans.valid

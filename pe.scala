@@ -15,6 +15,7 @@ class PETensorIO(w: Int, stat: Boolean) extends Bundle {
   val in = DeqIO(UInt(w.W))
   val out = EnqIO(UInt(w.W))
   val sig_stat2trans = if(stat)Some(Input(Bool()))else None
+  val sig_stat2trans_out = if(stat)Some(Output(Bool()))else None
 }
 class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io_type: Array[Boolean], num_op : Int, latency: Int, op_type: Int) extends Module{
   val io = IO(new Bundle {
@@ -59,6 +60,7 @@ class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io
       
     if(dataflow(i)==StationaryDataflow){
       ims(i).sig_stat2trans.get := io.data(i).sig_stat2trans.get
+      io.data(i).sig_stat2trans_out.get := ims(i).sig_stat2trans_out.get
     }
   }
 }
@@ -235,20 +237,24 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
   //      pe_sig_stat_trans_r(i)(j) := pe_sig_stat_trans_r(i)(j-1)
   //   }
   // }
-  val pe_sig_stat_trans_r = RegInit(VecInit(Seq.fill(pe_h+pe_w)(false.B)))
+  val pe_sig_stat_trans_r = RegInit(VecInit(Seq.fill(pe_h)(false.B)))
   pe_sig_stat_trans_r(0) := (cur_cycle < latency.asUInt)
-  for(i <- 1 until pe_h + pe_w){
+  for(i <- 1 until pe_h){
     pe_sig_stat_trans_r(i) := pe_sig_stat_trans_r(i-1)
   }
   for(i <- 0 until num_op){
     for(j <- 0 until pe_h){
       for(k <- 0 until pe_w){
         if(dataflows(i)==StationaryDataflow){
-          if(io_type(i)){
-            pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
-          }else{// output
-            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j+k) //(cur_cycle === 0.asUInt)
-          }
+          if(k!=0)
+            pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
+          else
+            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
+          // if(io_type(i)){
+          //   pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
+          // }else{// output
+          //   pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j+k) //(cur_cycle === 0.asUInt)
+          // }
           
         }
       }
