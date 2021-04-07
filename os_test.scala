@@ -9,7 +9,7 @@ import java.io.PrintWriter
 import breeze.linalg._
 
 class Test_OS_Tester(c: Test_OS_Top) extends PeekPokeTester(c){
-  for(i <- 0 until 1000){
+  for(i <- 0 until 300){
     step(1)
   }
 }
@@ -23,9 +23,9 @@ class Test_OS_Top extends Module{
   val ac     = DenseMatrix((1.0, 0.0, 0.0), (0.0, 1.0, 0.0))
   val df = Array(aa, ab, ac).map(x=>CalcDelta(x, stt)(0).toArray.map(_.toInt))
   println("dataflow:",df)
-  val pe_size = (10, 16)
+  val pe_size = (3, 3)
   val mat_len = 12
-  val latency = 12
+  val latency = 4
   val rnd = new scala.util.Random
   // val mat1 = DenseMatrix.tabulate(pe_size._1, mat_len){case(i,j)=>rnd.nextInt(10)}
   // val mat2 = DenseMatrix.tabulate(pe_size._2, mat_len){case(i,j)=>rnd.nextInt(10)}
@@ -56,9 +56,9 @@ class Test_OS_Top extends Module{
     RegInit(VecInit(Seq.fill(pe_size._2*latency)(0.U(20.W))))
   }
   
-  val stage_cycle = mat_len * latency + pe_size._1 + pe_size._2
-  val cycle = RegInit((stage_cycle-1).U(20.W))
-  cycle := Mux(cycle ===stage_cycle.U, 0.U, cycle + 1.U)
+  val stage_cycle = mat_len * latency + latency// + pe_size._1 + pe_size._2
+  val cycle = RegInit(0.U(20.W))
+  cycle := Mux(cycle ===(stage_cycle-1).U, 0.U, cycle + 1.U)
   val m = Module(new PEArray2D(pe_size._1,pe_size._2,Array(1,1,1), Array(32,32,32), df,Array(true, true, false),3, latency, 1)).io
   
   m.work := true.B
@@ -89,7 +89,7 @@ class Test_OS_Top extends Module{
 
 object Gen_PEArray_MEM extends App{
   val str = chisel3.Driver.emitVerilog(new PEArray_Mem())
-  new PrintWriter("PEArray_mem_l6.v") { write(str); close }
+  new PrintWriter("PEArray_mem.v") { write(str); close }
 }
 
 object Test_OS_App extends App{

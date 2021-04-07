@@ -142,21 +142,24 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   when((!update.valid) && trans.valid){
     update.bits(write_trans_pos) := trans.bits
   }
-  printf("trans:%d %d, write_pos:%d, update: %d, stat: %d, read_stat_pos: %d, to_PE:%d, %d\n",trans.valid, trans.bits, write_trans_pos, update.valid, stat.valid,read_stat_pos, io.to_pe.valid, io.to_pe.bits)
+  printf("stat2trans: %d, stat2trans.out: %d,  trans:%d %d, write_pos:%d, update: %d, stat: %d, read_stat_pos: %d, to_PE:%d, %d\n",io.sig_stat2trans.get,io.sig_stat2trans_out.get, trans.valid, trans.bits, write_trans_pos, update.valid, stat.valid,read_stat_pos, io.to_pe.valid, io.to_pe.bits)
   // 运算时，每次读取不同的stat
   read_stat_pos := Mux(stat.valid, Mux(read_stat_pos+1.U===latency.asUInt, 0.U, read_stat_pos+1.U),read_stat_pos)
   when(write_trans_pos===(latency-1).asUInt && trans.valid){
     update.valid := true.B
   }
   reg_stat2trans(0) := io.sig_stat2trans.get
+  for(i <- 1 until latency+1){
+    reg_stat2trans(i) := reg_stat2trans(i-1)
+  }
   //printf("%d %d, %d %d\n",io.in.bits, reg_in2trans, stat.bits, trans.bits
   trans <> io.in
   when(reg_stat2trans(0)){
     stat := update
     update.valid :=false.B
   }
-  io.to_pe.valid := stat.valid
-  io.to_pe.bits := stat.bits(read_stat_pos)
+  io.to_pe.valid := RegNext(stat.valid, false.B)
+  io.to_pe.bits := RegNext(stat.bits(read_stat_pos), false.B)
   io.sig_stat2trans_out.get := reg_stat2trans(latency)
 }
 
@@ -182,7 +185,7 @@ class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule
   reg_stat2trans := io.sig_stat2trans.get
   io.sig_stat2trans_out.get := reg_stat2trans
   //printf("%d %d\n",reg_stat2trans,io.from_pe.get.bits)
-  //printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
+  printf("queue: %d, stat enq: %d %d, stat deq: %d %d %d, trans=%d %d, output=%d %d %d\n",stat.io.count, stat.io.enq.valid, stat.io.enq.bits, stat.io.deq.valid, stat.io.deq.bits, stat.io.deq.ready, trans.valid, trans.bits, io.out.valid, io.out.bits, io.out.ready)
   io.out.valid := trans.valid
   io.out.bits := trans.bits
   //stat := io.from_pe

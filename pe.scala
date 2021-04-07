@@ -246,10 +246,15 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
     for(j <- 0 until pe_h){
       for(k <- 0 until pe_w){
         if(dataflows(i)==StationaryDataflow){
-          if(k!=0)
-            pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
-          else
-            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
+          if(io_type(i)){
+            pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
+          }else{
+            if(k!=0)
+              pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
+            else
+              pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
+          }
+          
           // if(io_type(i)){
           //   pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
           // }else{// output
@@ -260,7 +265,7 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
       }
     }
   }
-  printf("cycle=%d\n",cur_cycle)
+  printf("cur_cycle=%d\n\n",cur_cycle)
   // printf("cycle:%d\n",cur_cycle)
   // for(i <- 0 until 4){
   //   for(j <- 0 until 4){
