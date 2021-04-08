@@ -238,7 +238,7 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
   //   }
   // }
   val pe_sig_stat_trans_r = RegInit(VecInit(Seq.fill(pe_h)(false.B)))
-  pe_sig_stat_trans_r(0) := (cur_cycle < latency.asUInt)
+  
   for(i <- 1 until pe_h){
     pe_sig_stat_trans_r(i) := pe_sig_stat_trans_r(i-1)
   }
@@ -246,21 +246,15 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
     for(j <- 0 until pe_h){
       for(k <- 0 until pe_w){
         if(dataflows(i)==StationaryDataflow){
-          if(io_type(i)){
-            pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
-          }else{
-            if(k!=0)
-              pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
-            else
-              pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
+          if(io_type(i)){ // WS
+            pe_sig_stat_trans_r(0) := (cur_cycle===0.U)
+          }else{          // OS
+            pe_sig_stat_trans_r(0) := (cur_cycle < latency.asUInt)
           }
-          
-          // if(io_type(i)){
-          //   pes(j)(k).data(i).sig_stat2trans.get := (cur_cycle===(j+k*latency+k).asUInt)
-          // }else{// output
-          //   pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j+k) //(cur_cycle === 0.asUInt)
-          // }
-          
+          if(k!=0)
+            pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
+          else
+            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
         }
       }
     }

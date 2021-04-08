@@ -178,7 +178,7 @@ class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule
     }
   //}
   stat.io.deq.ready := io.out.ready || (!trans.valid)
-  io.in.ready := (stat.io.count===0.U)
+  io.in.ready := !stat.io.deq.valid//===0.U)
   //val stat_C = Module(new RegIO(m*n,width))
   //val stat = RegInit(VecInit(Seq.fill(latency)(0.U.asTypeOf(Decoupled(UInt(width.W))))))
   val reg_stat2trans = RegInit(false.B)

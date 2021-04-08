@@ -77,7 +77,7 @@ class Test_WS_Top extends Module{
     // stat input: pe_size._2 * latency cycles
     val input_weight_cond = cycle>=1.asUInt && cycle<(pe_size._2 * latency+1).U
     m.data(0)(j).valid := input_weight_cond
-    m.data(0)(j).bits := Mux(input_weight_cond, mat1_reg(j)(cycle-1.asUInt), 0.U)
+    m.data(0)(j).bits := 1.U//Mux(input_weight_cond, mat1_reg(j)(cycle-1.asUInt), 0.U)
     m.data(2)(j).ready := true.B
     
     output_time(j).in := m.data(2)(j).valid
