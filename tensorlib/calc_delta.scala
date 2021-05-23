@@ -7,8 +7,8 @@ import math.abs
 import math.round
 
 object CalcDelta {
-  def apply(matA: DenseMatrix[Double], matT: DenseMatrix[Double]) = {
-    val matB = matA * inv(matT)
+  def apply(matA: DenseMatrix[Int], matT: DenseMatrix[Int]) = {
+    val matB = matA.mapValues(_.toDouble) * inv(matT.mapValues(_.toDouble))
     // val matZ = DenseMatrix.eye[Double](matB.cols) - pinv(matB) * matB
     val d = scala.collection.mutable.ArrayBuffer.empty[DenseVector[Double]]
 
@@ -32,6 +32,6 @@ object CalcDelta {
     }
     if (matT.rows - rank(matB) != d.length)
       throw new Exception("Can not extract valid dataflows")
-    d
+    d.map(x=>x.mapValues(_.toInt))
   }
 }

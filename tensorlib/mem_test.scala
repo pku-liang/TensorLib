@@ -13,7 +13,7 @@ class Test_Mem extends Module{
   val data_width = Array(32, 32, 32)
   val addr_width = 20
   val pe_size = (10, 16)
-  val mat_len = 256
+  val mat_len = 6
   val latency = 4
   val rnd = new scala.util.Random
   val num_buffer = 2

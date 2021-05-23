@@ -246,3 +246,108 @@ class ComputeCell_Int(vec: Array[Int], width: Array[Int]) extends Module{
   io.data(1).out := io.data(1).in
   io.data(0).out := io.data(0).in
 }
+class ComputeCell_Dummy(vec: Array[Int], width: Array[Int], num_op : Int) extends Module{
+  val io = IO(new Bundle {
+      val data = new HeterogeneousBag(
+      for(i <- 0 until num_op) yield{
+        new Bundle{
+          val in = Input(UInt((vec(i)*width(i)).W))
+          val out = Output(UInt((vec(i)*width(i)).W))
+        }
+      }) 
+    })
+  val vec_a = Wire(Vec(vec(0), UInt(width(0).W)))
+  val vec_b = Wire(Vec(vec(1), UInt(width(1).W)))
+  val vec_c_in = Wire(Vec(vec(2), UInt(width(2).W)))
+  val vec_c_out = Wire(Vec(vec(2), UInt(width(2).W)))
+  for(i <- 0 until vec(0)){
+    vec_a(i):=io.data(0).in(i*width(0)+width(0)-1, i*width(0))
+  }
+  for(i <- 0 until vec(1)){
+    vec_b(i):=io.data(1).in(i*width(1)+width(1)-1, i*width(1))
+  }
+  for(i <- 0 until vec(2)){
+    vec_c_in(i):=io.data(2).in(i*width(1)+width(1)-1, i*width(1))
+  }
+  for(i <- 0 until vec(0)){
+    for(j <- 0 until vec(1)){
+      vec_c_out(i*vec(1)+j):=vec_c_in(i*vec(1)+j) + vec_a(i) * vec_b(j)
+    }
+  }
+  io.data(2).out := vec_c_out.asUInt
+  io.data(1).out := io.data(1).in
+  io.data(0).out := io.data(0).in
+}
+class Vivado_Add(vec: Array[Int], width: Int, num_op : Int) extends Module {
+    val io = IO(new Bundle {
+      val data = new HeterogeneousBag(
+      for(i <- 0 until num_op) yield{
+        new Bundle{
+          val in = Input(UInt((vec(i)*width).W))
+          val out = Output(UInt((vec(i)*width).W))
+        }
+      }) 
+    })
+    //printf("%d %d %d %d %d\n",io.data.in_a.bits, io.data.in_b.bits, io.data.in_c.bits, io.data.out_c.bits, io.data.in_c.valid)
+    val vec_a = Wire(Vec(vec(0), UInt(width.W)))
+    val vec_b = Wire(Vec(vec(1), UInt(width.W)))
+    val vec_c_in = Wire(Vec(vec(2), UInt(width.W)))
+    val vec_c_out = Wire(Vec(vec(2), UInt(width.W)))
+    for(i <- 0 until vec(0)){
+      vec_a(i):=io.data(0).in(i*width+width-1, i*width)
+    }
+    for(i <- 0 until vec(1)){
+      vec_b(i):=io.data(1).in(i*width+width-1, i*width)
+    }
+    val ip = for(i <- 0 until vec(0) * vec(1)) yield Module(new My_fadd).io
+    for(i <- 0 until vec(0)){
+      for(j <- 0 until vec(1)){
+        ip(i*vec(1)+j).aclk := clock
+        ip(i*vec(1)+j).s_axis_a_tvalid:=true.B
+        ip(i*vec(1)+j).s_axis_b_tvalid:=true.B
+        ip(i*vec(1)+j).s_axis_a_tdata:=vec_a(i)
+        ip(i*vec(1)+j).s_axis_b_tdata:=vec_b(j)
+        vec_c_out(i*vec(1)+j):=ip(i*vec(1)+j).m_axis_result_tdata
+      }
+    }
+    io.data(2).out := vec_c_out.asUInt
+    io.data(1).out := io.data(1).in
+    io.data(0).out := io.data(0).in
+}
+
+class Vivado_Mul(vec: Array[Int], width: Int, num_op : Int) extends Module {
+    val io = IO(new Bundle {
+      val data = new HeterogeneousBag(
+      for(i <- 0 until num_op) yield{
+        new Bundle{
+          val in = Input(UInt((vec(i)*width).W))
+          val out = Output(UInt((vec(i)*width).W))
+        }
+      }) 
+    })
+    //printf("%d %d %d %d %d\n",io.data.in_a.bits, io.data.in_b.bits, io.data.in_c.bits, io.data.out_c.bits, io.data.in_c.valid)
+    val vec_a = Wire(Vec(vec(0), UInt(width.W)))
+    val vec_b = Wire(Vec(vec(1), UInt(width.W)))
+    val vec_c_in = Wire(Vec(vec(2), UInt(width.W)))
+    val vec_c_out = Wire(Vec(vec(2), UInt(width.W)))
+    for(i <- 0 until vec(0)){
+      vec_a(i):=io.data(0).in(i*width+width-1, i*width)
+    }
+    for(i <- 0 until vec(1)){
+      vec_b(i):=io.data(1).in(i*width+width-1, i*width)
+    }
+    val ip = for(i <- 0 until vec(0) * vec(1)) yield Module(new My_fmul).io
+    for(i <- 0 until vec(0)){
+      for(j <- 0 until vec(1)){
+        ip(i*vec(1)+j).aclk := clock
+        ip(i*vec(1)+j).s_axis_a_tvalid:=true.B
+        ip(i*vec(1)+j).s_axis_b_tvalid:=true.B
+        ip(i*vec(1)+j).s_axis_a_tdata:=vec_a(i)
+        ip(i*vec(1)+j).s_axis_b_tdata:=vec_b(j)
+        vec_c_out(i*vec(1)+j):=ip(i*vec(1)+j).m_axis_result_tdata
+      }
+    }
+    io.data(2).out := vec_c_out.asUInt
+    io.data(1).out := io.data(1).in
+    io.data(0).out := io.data(0).in
+}
