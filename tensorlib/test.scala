@@ -13,16 +13,18 @@ object Gen_OS_GEMM extends App{
 	val vec = Array(1, 1, 1)
 	val width = Array(16,16,16)
 	val stt = DenseMatrix((1,0,0),(0,1,0),(1,1,1))
-  val time_range = Array(16, 16, 16)
+  val latency = 1
+  val time_range = Array(latency, 16, 16)
 	val access = Array(
 		DenseMatrix((1, 0, 0), (0, 0, 1)),
 		DenseMatrix((0, 1, 0), (0, 0, 1)),
 		DenseMatrix((1, 0, 0), (0, 1, 0))
 		)
 	val io_type = Array(true,true,false)
-	val latency = 1
+	
 	val op_type = 0
-	val m = new PEArray2D(
+
+  val str = chisel3.Driver.emitVerilog(new PEArray2D(
     pe_size, 
     vec, 
     width, 
@@ -32,8 +34,6 @@ object Gen_OS_GEMM extends App{
     io_type, 
     latency,  
     op_type, 
-    time_range
-  )
-  val str = chisel3.Driver.emitVerilog(m)
+    time_range))
   new PrintWriter("out.v") { write(str); close }
 }

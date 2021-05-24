@@ -26,6 +26,7 @@ class MemController(
     wr_init: Array[Int],
     rd_init: Array[Int]
   ) extends Module{
+  println("wr_dim:",DenseVector[Int](wr_dim))
   val mem = Module(new MultiDimMem(addr_width,wr_dim, rd_dim, wr_init, rd_init, mem_size, data_width)).io
   val wr_time = Module(new MultiDimTime(addr_width,wr_pattern,wr_init)).io
   val rd_time = Module(new MultiDimTime(addr_width,rd_pattern,rd_init)).io
@@ -102,18 +103,14 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
 class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_init: Array[Int], rd_init: Array[Int], size: Int, dw: Int) extends Module{
   val len = wr_dim.length
   val io = IO(new Bundle{
-    val rd_addr = Input(Valid(new HeterogeneousBag(
-      (0 until len).map(i=>UInt(addr_width.W))
-    )))
+    val rd_addr = Input(Valid(Vec(len, UInt(2.W))))
     val rd_data = Output(Valid(UInt(dw.W)))
-    val wr_addr = Input(Valid(new HeterogeneousBag(
-      (0 until len).map(i=>UInt(addr_width.W))
-    )))
+    val wr_addr = Input(Valid(Vec(len, UInt(2.W))))
     val wr_data = Input(Valid(UInt(dw.W)))
     val final_rd_addr = Output(UInt(addr_width.W))
     val final_wr_addr = Output(UInt(addr_width.W))
   })
-  val mem = SyncReadMem(size, UInt(dw.W))
+  val mem = SyncReadMem(size, UInt((dw+1).W))
   val rd_addr_reg = RegInit({
     val b = Wire(Input(Valid(new HeterogeneousBag(
       (0 until len).map(i=>UInt(addr_width.W))
@@ -134,14 +131,17 @@ class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_in
   for(i <- 0 until len){
     rd_addr_reg.bits(i) := rd_part_addr(i)
   }
-  io.rd_data.valid := RegNext(rd_addr_reg.valid, false.B)
-  io.rd_data.bits := mem.read(rd_addr_reg.bits.reduce(_+_),rd_addr_reg.valid)
+  
+  val mem_output = mem.read(rd_addr_reg.bits.reduce(_+_),rd_addr_reg.valid)
+  io.rd_data.valid := mem_output(dw)
+  io.rd_data.bits := mem_output(dw-1, 0)
   val wr_addr_reg = RegInit({
     val b = Wire(Input(Valid(new HeterogeneousBag(
       (0 until len).map(i=>UInt(addr_width.W))
     ))))
     b.valid := false.B
     for(i <- 0 until len){
+      println(i, wr_init(i), wr_dim(i))
       b.bits(i) := (wr_init(i) * wr_dim(i)).asUInt
     }
     b
@@ -158,7 +158,7 @@ class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_in
   val mem_wr_addr = wr_addr_reg.bits.reduce(_+_)
   
   when(wr_addr_reg.valid){
-    mem.write(mem_wr_addr, wr_data_reg.bits)
+    mem.write(mem_wr_addr, Cat(wr_data_reg.valid, wr_data_reg.bits))
   }
   printf("wr_addr:%d, rd_addr:%d\n",mem_wr_addr, mem_rd_addr)
 

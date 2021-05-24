@@ -259,7 +259,8 @@ class ComputeCell_Dummy(vec: Array[Int], width: Array[Int], num_op : Int) extend
   val vec_a = Wire(Vec(vec(0), UInt(width(0).W)))
   val vec_b = Wire(Vec(vec(1), UInt(width(1).W)))
   val vec_c_in = Wire(Vec(vec(2), UInt(width(2).W)))
-  val vec_c_out = Wire(Vec(vec(2), UInt(width(2).W)))
+  val vec_c_out = RegInit(VecInit(Seq.fill(vec(2))(0.U(width(2).W))))//Wire(Vec(vec(2), UInt(width(2).W)))
+  
   for(i <- 0 until vec(0)){
     vec_a(i):=io.data(0).in(i*width(0)+width(0)-1, i*width(0))
   }

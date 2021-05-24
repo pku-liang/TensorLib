@@ -18,6 +18,7 @@ class PETensorIO(w: Int, stat: Boolean) extends Bundle {
   val in = Input(Valid(UInt(w.W)))
   val out = Output(Valid(UInt(w.W)))
   val sig_stat2trans = if(stat)Some(Input(Bool()))else None
+  override def cloneType = (new PETensorIO(w, stat)).asInstanceOf[this.type]
 }
 class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io_type: Array[Boolean], num_op : Int, latency: Int, op_type: Int) extends Module{
   val io = IO(new Bundle {
@@ -139,18 +140,7 @@ class PENetwork(rvec: Array[Int], io_type: Boolean, pe_num: Int, width: Int, add
     }
   }
 }
-class PEArray2D(
-    pe_size: (Int, Int), 
-    vec: Array[Int], 
-    width: Array[Int], 
-    addr_width: Int = 16,
-    stt: DenseMatrix[Int], 
-    access: Array[DenseMatrix[Int]], 
-    io_type: Array[Boolean], 
-    latency: Int,  
-    op_type: Int = 0, 
-    time_range: Array[Int]
-  ) extends Module{
+class PEArray2D(pe_size: (Int, Int), vec: Array[Int], width: Array[Int], addr_width: Int = 16,stt: DenseMatrix[Int], access: Array[DenseMatrix[Int]], io_type: Array[Boolean], latency: Int,  op_type: Int = 0, time_range: Array[Int]) extends Module{
   val dims = (0 until time_range.length).map(x=>time_range.slice(0, x+1).reduce(_*_)).toArray
   val time_ctrl = Module(new MultiDimTime(addr_width, time_range, Array.fill(time_range.length)(0))).io
   val (pe_h, pe_w) = pe_size
@@ -185,22 +175,18 @@ class PEArray2D(
 
   // calc bank num
   for(i <- 0 until num_op){
-    val dirx = if(dataflows(i)==StationaryDataflow){
-      if(io_type(i))
-        1
-      else
-        -1
-    }else rvec(i)(0)
+    val dirx = if(dataflows(i)==StationaryDataflow) 1 else rvec(i)(0)
     val diry = if(dataflows(i)==StationaryDataflow) 0 else rvec(i)(1)
     println(i, dirx, diry)
     for(j <- 0 until pe_h){
       for(k <- 0 until pe_w){
         // find first peid
         if(j - diry >= pe_h || j - diry < 0 || k - dirx >= pe_w || k - dirx < 0){
+          bank_peid(i) += ArrayBuffer[(Int, Int)]()
           bank_peid(i)(num_io_banks(i)) += ((j, k))
           if((dirx|diry)!=0){
             var (js, ks) = (j+diry, k+dirx)
-            while(js < pe_h && js > 0 && ks < pe_w && ks > 0){
+            while(js < pe_h && js >= 0 && ks < pe_w && ks >= 0){
               bank_peid(i)(num_io_banks(i)) += ((js, ks))
               js += diry
               ks += dirx
@@ -209,6 +195,10 @@ class PEArray2D(
           num_io_banks(i) = num_io_banks(i) + 1
         }
       }
+    }
+    println("BANK_PEID"+i+":"+bank_peid(i).length)
+    for(t <- 0 until bank_peid(i).length){
+      println(bank_peid(i)(t).mkString(" "))
     }
   }
 
@@ -233,13 +223,17 @@ class PEArray2D(
     val out_valid = Input(Bool())
   })
 
-
+  time_ctrl.in := io.in_valid
   // link PE with network
   for(i <- 0 until num_op){
     for(j <- 0 until bank_peid(i).length){
       for(k <- 0 until bank_peid(i)(j).length){
         val (idy,idx) = bank_peid(i)(j)(k)
-        pe_net(i)(j).to_pes(k) <> pes(idy)(idx).data(i)
+        pe_net(i)(j).to_pes(k).out := pes(idy)(idx).data(i).out
+        pes(idy)(idx).data(i).in := pe_net(i)(j).to_pes(k).in
+        if(dataflows(i)==StationaryDataflow){
+          pes(idy)(idx).data(i).sig_stat2trans.get := pe_net(i)(j).to_pes(k).sig_stat2trans.get
+        }
       }
       pe_net(i)(j).to_mem <> io.data(i)(j)
     }
@@ -259,12 +253,13 @@ class PEArray2D(
 
   val mem = for(i <- 0 until num_op) yield{
     for(j <- 0 until bank_peid(i).length) yield{
-
+      println("mem:"+i+","+j)
       // cycle 0 read address?
-      val init_st = DenseVector[Int](Array(bank_peid(i)(j)(0)._1, bank_peid(i)(j)(0)._2, 0))
-      val init_rd_idx = (inv(stt).mapValues(_.toInt) * init_st)
-      val init_rd_arr = (0 until init_st.length).map(init_rd_idx(_)).toArray
-      var init_wr_arr = init_rd_arr.updated(init_rd_idx.length-1, init_rd_idx(init_rd_idx.length-1) + 1).toArray
+      // val init_st = DenseVector[Int](Array(bank_peid(i)(j)(0)._1, bank_peid(i)(j)(0)._2, 0))
+      // val init_rd_idx = (inv(stt).mapValues(_.toInt) * init_st)
+      val init_rd_idx = Array.fill(time_range.length)(0)
+      var init_wr_idx = init_rd_idx.updated(init_rd_idx.length-1, init_rd_idx(init_rd_idx.length-1) + 1)
+      println(init_rd_idx.mkString(" "), init_wr_idx.mkString(" "))
       var stat_dims = dims
       var stat_time = time_range
       for(k <- 2 until stat_dims.length){
@@ -272,9 +267,9 @@ class PEArray2D(
       }
       stat_time(1) = stat_time(1) / time_range(1) * bank_peid(i)(j).length
       if(dataflows(i)==StationaryDataflow)
-        Module(new MemController(dims(time_range.length-1), width(i) * vec(i), addr_width, stat_dims, stat_dims, stat_time, stat_time, init_rd_arr, init_wr_arr)).io
+        Module(new MemController(dims(time_range.length-1), width(i) * vec(i), addr_width, stat_dims, stat_dims, stat_time, stat_time, init_rd_idx, init_wr_idx)).io
       else
-        Module(new MemController(dims(time_range.length-1), width(i) * vec(i), addr_width, dims, dims, time_range, time_range, init_rd_arr, init_wr_arr)).io
+        Module(new MemController(dims(time_range.length-1), width(i) * vec(i), addr_width, dims, dims, time_range, time_range, init_rd_idx, init_wr_idx)).io
     }
   }
 
