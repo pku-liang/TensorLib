@@ -5,70 +5,173 @@ import chisel3.util._
 //import chisel3.Driver
 import chisel3.iotesters.{PeekPokeTester, Driver}
 import java.io.PrintWriter
+import scala.collection.mutable.ArrayBuffer
+import breeze.linalg._
+import breeze.numerics._
 
 sealed trait TensorDataflow
 case object DirectDataflow extends TensorDataflow
 case object SystolicDataflow extends TensorDataflow
 case object StationaryDataflow extends TensorDataflow
 // input deq, output enq
-class PETensorIO(w: Int, stat: Boolean) extends Bundle {
-  val in = DeqIO(UInt(w.W))
-  val out = EnqIO(UInt(w.W))
+class PETensorIO(w: Int, stat: Boolean, back: Boolean = false) extends Bundle {
+  val in = Input(Valid(UInt(w.W)))
+  val out = Output(Valid(UInt(w.W)))
   val sig_stat2trans = if(stat)Some(Input(Bool()))else None
-  val sig_stat2trans_out = if(stat)Some(Output(Bool()))else None
+  val in_ready = if(back)Some(Output(Bool()))else None
+  val out_ready = if(back)Some(Input(Bool()))else None
+  override def cloneType = (new PETensorIO(w, stat)).asInstanceOf[this.type]
 }
-class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io_type: Array[Boolean], num_op : Int, latency: Int, op_type: Int) extends Module{
+class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io_type: Array[Boolean], num_op : Int, latency: Int, op_type: Int, back: Boolean) extends Module{
   val io = IO(new Bundle {
     val data = new HeterogeneousBag(
       for(i <- 0 until num_op) yield{
-        new PETensorIO(width(i)*vec(i), dataflow(i)==StationaryDataflow)
+        new PETensorIO(width(i)*vec(i), dataflow(i)==StationaryDataflow, dataflow(i)==StationaryDataflow && back)
     })
   })
   def im_factory(dataflow: TensorDataflow, io_type: Boolean, width: Int, latency: Int):InternalModule={
     dataflow match {
       case DirectDataflow => if(io_type) new DirectInput(width) else new DirectOutput(width)
       case SystolicDataflow => if(io_type) new SystolicInput(width) else new SystolicOutput(width)
-      case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_Pipeline(width, latency)
+      case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_OutCell(width, latency)
     }
   }
   //val exec_cycle = RegInit(0.U(20.W))
 
-  val pe = 
-    if(op_type==0)
-      Module(new ComputeCellF(vec, width(0), num_op)).io
-    else if(op_type==1)
-      Module(new ComputeCell_Latency(vec, width(0), latency)).io
-    else
-      Module(new ComputeCell_Int(vec, width)).io
+  val pe = if(op_type==0)
+    Module(new ComputeCell_Dummy(vec, width, num_op)).io
+  else
+    Module(new ComputeCellF(vec, width(0), num_op)).io
   val ims = for(i <- 0 until num_op) yield{
     Module(im_factory(dataflow(i), io_type(i), vec(i) * width(i), latency)).io
   }
   //val exec = VecInit(ims.map(it=>it.to_pe.valid)).reduce(_ && _)
   //exec_cycle := Mux(exec_cycle + exec === io.stage_cycle, 0.U, exec_cycle + exec)
   for(i <- 0 until num_op){
-    ims(i).in <> io.data(i).in
-    io.data(i).out <> ims(i).out
-    pe.data(i).in <> ims(i).to_pe.bits
+    ims(i).port.in <> io.data(i).in
+    io.data(i).out <> ims(i).port.out
+    pe.data(i).in <> ims(i).to_cell
     
-    ims(i).to_pe.ready := true.B
 
     if(!io_type(i)){
-      ims(i).from_pe.get.bits := pe.data(i).out
-      ims(i).from_pe.get.valid := VecInit(ims.map(it=>it.to_pe.valid)).reduce(_ && _)
+      ims(i).from_cell.get := pe.data(i).out
+      //ims(i).from_pe.get.valid := VecInit(ims.map(it=>it.to_pe.valid)).reduce(_ && _)
+      //printf("pe out:%d %d\n", ims(i).from_pe.get.bits, ims(i).from_pe.get.valid)
     }
     //VecInit(x.map(it=>pes(it._1)(it._2).data(i).out.valid)).reduce(_ && _)
       
     if(dataflow(i)==StationaryDataflow){
-      ims(i).sig_stat2trans.get := io.data(i).sig_stat2trans.get
-      io.data(i).sig_stat2trans_out.get := ims(i).sig_stat2trans_out.get
+      ims(i).port.sig_stat2trans.get := io.data(i).sig_stat2trans.get
     }
   }
 }
+class PENetwork(rvec: Array[Int], io_type: Boolean, pe_num: Int, width: Int, addr_width: Int, latency: Int, back: Boolean)extends Module{
+  val stat = (rvec(0)&rvec(1))==0 && rvec(2)!=0
+  val io = IO(new Bundle{
+    val to_pes = Vec(pe_num, Flipped(new PETensorIO(width, stat, back)))
+    val to_mem = if(io_type) Input(Valid(UInt(width.W))) else Output(Valid(UInt(width.W)))
+    val sig_stat2trans = if(stat)Some(Input(Bool()))else None
+  })
+  // start: cycle, 
+  var (dirx, diry) = (rvec(0), rvec(1))
 
-class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: Array[Array[Int]], io_type: Array[Boolean], num_op : Int, latency: Int,  op_type: Int = 0) extends Module{
+  if((rvec(0)&rvec(1))!=0 && rvec(2)==0 && !io_type){
+    // adder tree
+    val tree = Module(new AddTree(pe_num, width)).io
+    for(q <- 0 until pe_num){
+      tree.in.bits(q) := io.to_pes(q-1).out.bits
+    }
+    tree.in.valid := VecInit(io.to_pes.map(x=>x.out.valid)).reduce(_ && _)
+    io.to_mem := tree.out
+    io.to_pes.foreach(x=>{
+      x.in.valid := true.B
+      x.in.bits := 0.U
+    })
+  }else if((rvec(0)&rvec(1))==0 && rvec(2)!=0 && (!io_type) &&(!back)){
+    // stationary output
+
+    // pe_num * latency buffer
+    val stat_data = Seq.fill(pe_num)(SyncReadMem(latency, UInt(width.W)))//RegInit(VecInit(Seq.fill(pe_num)(VecInit(Seq.fill(latency)(0.U(width.W))))))
+    val in_pos = Array.fill(pe_num)(RegInit(0.U(5.W)))
+    val data_valid = RegInit(false.B)
+    val out_pos = RegInit(0.U(10.W))
+    val out_pe = RegInit(0.U(10.W))
+    // input
+    //printf("pe to network: (%d, %d) (%d, %d) (%d, %d) (%d, %d)\n", io.to_pes(0).out.valid,io.to_pes(0).out.bits, io.to_pes(1).out.valid,io.to_pes(1).out.bits,io.to_pes(2).out.valid,io.to_pes(2).out.bits,io.to_pes(3).out.valid,io.to_pes(3).out.bits)
+    for(i <- 0 until pe_num){
+      io.to_pes(i).in.bits := 0.U
+      io.to_pes(i).in.valid := false.B
+      when(io.to_pes(i).out.valid){
+        stat_data(i).write(in_pos(i), io.to_pes(i).out.bits)
+        in_pos(i) := Mux(in_pos(i)===(latency-1).asUInt, 0.U, in_pos(i) + 1.U)
+      }
+    }
+    when(in_pos(pe_num-1)===(latency-1).asUInt && io.to_pes(pe_num-1).out.valid){
+      data_valid := true.B
+    }
+    when(data_valid){
+      out_pos := Mux(out_pos===(latency-1).asUInt, 0.U, out_pos + 1.U)
+      out_pe := Mux(out_pos===(latency-1).asUInt, Mux(out_pe===(pe_num-1).asUInt, 0.U, out_pe+1.U), out_pe)
+      when(out_pos===(latency-1).asUInt && out_pe===(pe_num-1).asUInt){
+        data_valid := false.B
+      }
+    }
+    val stat_data_out = VecInit(stat_data.map(_.read(out_pos)))
+    io.to_mem.valid := data_valid
+    io.to_mem.bits := stat_data_out(out_pe)//stat_data(out_pe).read(out_pos)
+  }else{
+    // systolic connection
+    for(i <- 1 until pe_num){
+      io.to_pes(i).in := io.to_pes(i-1).out
+    }
+    if(io_type){  //systolic input
+      io.to_pes(0).in := io.to_mem
+    }else{        //systolic output
+      io.to_pes(0).in.valid := false.B
+      io.to_pes(0).in.bits := 0.U
+      io.to_mem := io.to_pes(pe_num-1).out
+    }
+  }
+  // sig_stat2trans signal transfer
+  if(stat){
+    for(i <- 0 until pe_num){
+      if(io_type){
+        // stationary input
+        io.to_pes(i).sig_stat2trans.get := ShiftRegister(io.sig_stat2trans.get,i*latency)
+      }else{
+        io.to_pes(i).sig_stat2trans.get := ShiftRegister(io.sig_stat2trans.get, latency+3)
+      }
+      if(back && i > 0){
+        // reverse
+        io.to_pes(i-1).out_ready.get := io.to_pes(i).in_ready.get
+      }
+    }
+    if(back)
+      io.to_pes(pe_num-1).out_ready.get := true.B
+  }
+}
+class PEArrayDataBundle(io_type: Boolean, vec: Int, width: Int) extends Bundle{
+  val in = if(io_type) 
+      Some(Vec(vec, Input(Valid(Valid(UInt(width.W))))))
+    else
+      None
+  val out = if(!io_type) 
+      Some(Vec(vec, Output(Valid(UInt(width.W)))))
+    else
+      None
+}
+class PEArray2D(pe_size: (Int, Int), vec: Array[Int], width: Array[Int], addr_width: Int = 16,stt: DenseMatrix[Int], access: Array[DenseMatrix[Int]], io_type: Array[Boolean], latency: Int,  op_type: Int = 0, time_range: Array[Int], back: Boolean) extends Module{
+  val dims = 1 +: (0 until time_range.length-1).map(x=>time_range.slice(0, x+1).reduce(_*_)).toArray
+  val time_ctrl = Module(new MultiDimTime(addr_width, time_range, Array.fill(time_range.length)(0))).io
+  printf("time_ctrl: %d %d %d\n",time_ctrl.index(0), time_ctrl.index(1), time_ctrl.index(2))
+  val (pe_h, pe_w) = pe_size
+  val num_op = access.length
+  val ainvt = access.map(x=>x*(inv(stt).mapValues(_.toInt)))
+  // find reuse vector
+  val rvec = access.map(x=>CalcDelta(x, stt)(0).toArray)
   val dataflows = for(i <- 0 until num_op) yield{
-    val xy_diff = stt(i)(0)!=0||stt(i)(1)!=0
-    val t_diff = stt(i)(2)!=0
+    val xy_diff = rvec(i)(0)!=0||rvec(i)(1)!=0
+    val t_diff = rvec(i)(2)!=0
     //var res = TensorDataflow
     if(!xy_diff && t_diff){
       StationaryDataflow
@@ -81,191 +184,139 @@ class PEArray2D(pe_h: Int, pe_w: Int, vec: Array[Int], width: Array[Int], stt: A
   // pe definition
   val pes = for(i <- 0 until pe_h) yield{
     for(j <- 0 until pe_w) yield{
-      Module(new PE(vec, width, dataflows.toArray, io_type, num_op, latency, op_type)).io
+      Module(new PE(vec, width, dataflows.toArray, io_type, num_op, latency, op_type, back)).io
     }
   }
   var num_io_banks = Array.fill(num_op)(0)
   // pe connection, calculate bank number
+
+  // 3-dimension vector: num_op, num_bank, num_pe
+  val bank_peid = Array.fill(num_op)(ArrayBuffer[ArrayBuffer[(Int, Int)]]())
+
+
+  // calc bank num
   for(i <- 0 until num_op){
-    
-    val dirx = if(dataflows(i)==StationaryDataflow){
-      if(io_type(i))
-        1
-      else
-        -1
-    }else stt(i)(0)
-    val diry = if(dataflows(i)==StationaryDataflow) 0 else stt(i)(1)
+    val dirx = if(dataflows(i)==StationaryDataflow) 1 else rvec(i)(0)
+    val diry = if(dataflows(i)==StationaryDataflow) 0 else rvec(i)(1)
     println(i, dirx, diry)
-    // connection ports
-    if(io_type(i) ||(dataflows(i)!=DirectDataflow)){   // direct output use reduction tree
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          if(j+diry < pe_h && j+diry >=0 && k+dirx < pe_w && k+dirx >= 0){
-            pes(j)(k).data(i).out <> pes(j+diry)(k+dirx).data(i).in
-          }else{
-            pes(j)(k).data(i).out.ready := true.B
+    for(j <- 0 until pe_h){
+      for(k <- 0 until pe_w){
+        // find first peid
+        if(j - diry >= pe_h || j - diry < 0 || k - dirx >= pe_w || k - dirx < 0){
+          bank_peid(i) += ArrayBuffer[(Int, Int)]()
+          bank_peid(i)(num_io_banks(i)) += ((j, k))
+          if((dirx|diry)!=0){
+            var (js, ks) = (j+diry, k+dirx)
+            while(js < pe_h && js >= 0 && ks < pe_w && ks >= 0){
+              bank_peid(i)(num_io_banks(i)) += ((js, ks))
+              js += diry
+              ks += dirx
+            }
           }
+          num_io_banks(i) = num_io_banks(i) + 1
         }
       }
     }
-    
-    // input ports
-    if(io_type(i)){
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          if((j-diry >= pe_h || j-diry < 0 || k-dirx >= pe_w || k-dirx < 0)||(dirx == 0 && diry == 0)){
-            num_io_banks(i) = num_io_banks(i) + 1
-          }
-        }
-      }
-    }else{
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          if((j+diry >= pe_h || j+diry < 0 || k+dirx >= pe_w || k+dirx < 0)||(dirx == 0 && diry == 0)){
-            num_io_banks(i) = num_io_banks(i) + 1
-          }
-        }
-      }
+    // println("BANK_PEID"+i+":"+bank_peid(i).length)
+    // for(t <- 0 until bank_peid(i).length){
+    //   println(bank_peid(i)(t).mkString(" "))
+    // }
+  }
+
+  // create pe network
+  val pe_net = for(i <- 0 until num_op) yield{
+    for(j <- 0 until bank_peid(i).length) yield{
+      Module(new PENetwork(rvec(i), io_type(i), bank_peid(i)(j).length, vec(i) * width(i), 16, latency, back)).io
     }
   }
-  println("!!!",num_io_banks(0),num_io_banks(1),num_io_banks(2))
+
+  // create IO
+  println("bank num:",num_io_banks(0),num_io_banks(1),num_io_banks(2))
   val io = IO(new Bundle {
     val data = new HeterogeneousBag(
       for(i <- 0 until num_op) yield{
-        if(io_type(i)) 
-          Vec(num_io_banks(i), DeqIO(UInt((vec(i) * width(i)).W)))
-        else
-          Vec(num_io_banks(i), EnqIO(UInt((vec(i) * width(i)).W)))
+        new PEArrayDataBundle(io_type(i), num_io_banks(i), vec(i) * width(i))
     })
-    val work = Input(Bool())
-    val stage_cycle = Input(UInt(20.W))
+    // val data_in = new HeterogeneousBag(
+    //   for(i <- 0 until num_op) yield{
+    //     if(io_type(i)) 
+    //       Some(Vec(num_io_banks(i), Input(Valid(Valid(UInt((vec(i) * width(i)).W))))))
+    //     else
+    //       None
+    // })
+  //   val data = Vec(num_op,
+  //       if(io_type(i)) 
+  //         Some(Vec(num_io_banks(i), Input(Valid(Valid(UInt((vec(i) * width(i)).W))))))
+  //       else
+  //         Some(Vec(num_io_banks(i), Output(Valid(UInt((vec(i) * width(i)).W)))))
+  // )
+    val exec_valid = Input(Bool())
+    val out_valid = Input(Bool())
   })
-  // val cur_cycle = RegInit(VecInit(Seq.fill(pe_h * pe_w)(0.U(20.W))))
-  // when(io.work){
-  //   for(i <- 0 until pe_h * pe_w)
-  //     cur_cycle(i) := Mux(cur_cycle(i) + 1.U === io.stage_cycle, 0.U, cur_cycle(i) + 1.U)
-  // }
-  val cur_cycle = RegInit(0.U(20.W))
-  when(io.work){
-    cur_cycle := Mux(cur_cycle + 1.U === io.stage_cycle, 0.U, cur_cycle + 1.U)
-  }
-  for(i <- 0 until num_op){
-    val dirx = if(dataflows(i)==StationaryDataflow){
-      if(io_type(i))
-        1
-      else
-        -1
-    }else stt(i)(0)
-    val diry = if(dataflows(i)==StationaryDataflow) 0 else stt(i)(1)
-    var bank_id = 0
-    // input ports
-    if(io_type(i)){
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          if((j-diry >= pe_h || j-diry < 0 || k-dirx >= pe_w || k-dirx < 0)||(dirx == 0 && diry == 0)){
-            pes(j)(k).data(i).in <> io.data(i)(bank_id)
-            bank_id = bank_id + 1
-          }
-        }
-      }
-    }else if(dataflows(i)!=DirectDataflow){
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          if((j+diry >= pe_h || j+diry < 0 || k+dirx >= pe_w || k+dirx < 0)||(dirx == 0 && diry == 0)){
-            io.data(i)(bank_id) <> pes(j)(k).data(i).out
-            bank_id = bank_id + 1
-          }
-          if((j-diry >= pe_h || j-diry < 0 || k-dirx >= pe_w || k-dirx < 0)||(dirx == 0 && diry == 0)){
-            pes(j)(k).data(i).in.bits := 0.U
-            if(dataflows(i)==StationaryDataflow)
-              pes(j)(k).data(i).in.valid := false.B
-            else
-              pes(j)(k).data(i).in.valid := true.B
-          }
-        }
-      }
-    }else{
-      // reduction tree
-      import scala.collection.mutable.Set
-      import scala.collection.mutable.ListBuffer
-      val all_trees = Set[List[(Int, Int)]]();
-      for(j <- 0 until pe_h){
-        for(k <- 0 until pe_w){
-          // no input
-          pes(j)(k).data(i).in.valid := false.B
-          pes(j)(k).data(i).in.bits := 0.U
-          var in_set = false
-          all_trees.foreach(x=>{
-            if (x contains((j, k))){
-              in_set = true
-            }
-          })
-          if(!in_set){
-            var lb = new ListBuffer[(Int, Int)]()
-            var (dj ,dk) = (j, k)
-            while(dj < pe_h && dj >= 0 && dk < pe_w && dk >= 0){
-              lb += ((dj, dk))
-              dj = dj + diry
-              dk = dk + dirx
-              //(dj, dk) = (j+diry,  k+dirx)
-            }
-            all_trees += lb.toList
-          }
-        }
-      }
-      var out_id = 0
-      all_trees.foreach(x =>{
-        val tree = Module(new AddTree(x.length, vec(2) * width(i))).io
-        for(q <- 0 until x.length){
-          tree.in.bits(q) := pes(x(q)._1)(x(q)._2).data(i).out.bits
-        }
-        tree.in.valid := VecInit(x.map(it=>pes(it._1)(it._2).data(i).out.valid)).reduce(_ && _)
-        io.data(i)(out_id) := tree.out
-        out_id = out_id + 1
-      })
-    }
-  }
-  //val pe_sig_stat_trans_r = RegInit(VecInit(Seq.fill(pe_h)(VecInit(Seq.fill(8)(false.B)))))
-  
-  // for (m <- 0 until pe_h) {
-  //      pe_sig_stat_trans_r(m)(0) := (cur_cycle < latency.asUInt)     
-  // }
 
-  // for(i <- 0 until pe_h) {
-  //   //8 is pipline in cross slr
-  //   for(j <- 1 until 8) {
-  //      pe_sig_stat_trans_r(i)(j) := pe_sig_stat_trans_r(i)(j-1)
-  //   }
-  // }
-  val pe_sig_stat_trans_r = RegInit(VecInit(Seq.fill(pe_h)(false.B)))
-  
-  for(i <- 1 until pe_h){
-    pe_sig_stat_trans_r(i) := pe_sig_stat_trans_r(i-1)
-  }
+  time_ctrl.in := io.exec_valid
+  // link PE with network
   for(i <- 0 until num_op){
-    for(j <- 0 until pe_h){
-      for(k <- 0 until pe_w){
+    for(j <- 0 until bank_peid(i).length){
+      for(k <- 0 until bank_peid(i)(j).length){
+        val (idy,idx) = bank_peid(i)(j)(k)
+        pe_net(i)(j).to_pes(k).out := pes(idy)(idx).data(i).out
+        pes(idy)(idx).data(i).in := pe_net(i)(j).to_pes(k).in
         if(dataflows(i)==StationaryDataflow){
-          if(io_type(i)){ // WS
-            pe_sig_stat_trans_r(0) := (cur_cycle===0.U)
-          }else{          // OS
-            pe_sig_stat_trans_r(0) := (cur_cycle < latency.asUInt)
-          }
-          if(k!=0)
-            pes(j)(k).data(i).sig_stat2trans.get := pes(j)(k-1).data(i).sig_stat2trans_out.get
-          else
-            pes(j)(k).data(i).sig_stat2trans.get := pe_sig_stat_trans_r(j)
+          pes(idy)(idx).data(i).sig_stat2trans.get := pe_net(i)(j).to_pes(k).sig_stat2trans.get
         }
       }
     }
   }
-  printf("cur_cycle=%d\n\n",cur_cycle)
-  // printf("cycle:%d\n",cur_cycle)
-  // for(i <- 0 until 4){
-  //   for(j <- 0 until 4){
-  //     printf("(%x %x %x)",  pes(i)(j).data(0).in.bits, pes(i)(j).data(1).in.bits, pes(i)(j).data(2).in.bits)
-  //   }
-  //   printf("\n")
-  // }
-  // printf("\n")
+
+  for(i <- 0 until num_op){
+    for(j <- 0 until bank_peid(i).length){
+      if((rvec(i)(0)&rvec(i)(1))==0 && rvec(i)(2)!=0){
+        if(io_type(i))
+          pe_net(i)(j).sig_stat2trans.get := (time_ctrl.index(0)===0.U && time_ctrl.index(1)===0.U)
+        else
+          pe_net(i)(j).sig_stat2trans.get := time_ctrl.index(1)===0.U
+      }
+    }
+  }
+  // create memory
+  println("dims:"+dims.mkString(" "))
+  val mem = for(i <- 0 until num_op) yield{
+    for(j <- 0 until bank_peid(i).length) yield{
+      //println("mem:"+i+","+j)
+      // cycle 0 read address?
+      // val init_st = DenseVector[Int](Array(bank_peid(i)(j)(0)._1, bank_peid(i)(j)(0)._2, 0))
+      // val init_rd_idx = (inv(stt).mapValues(_.toInt) * init_st)
+      val init_rd_idx = Array.fill(time_range.length)(0)
+      var init_wr_idx = Array.fill(time_range.length)(0)
+      //println(init_rd_idx.mkString(" "), init_wr_idx.mkString(" "))
+      var stat_dims = dims.clone
+      var stat_time = time_range.clone
+      val mem_size = time_range.reduce(_*_)
+      for(k <- 2 until stat_dims.length){
+        stat_dims(k) = stat_dims(k) / time_range(1) * bank_peid(i)(j).length
+      }
+      stat_time(1) = stat_time(1) / time_range(1) * bank_peid(i)(j).length
+      if(dataflows(i)==StationaryDataflow)
+        Module(new MemController(stat_time.reduce(_*_), width(i) * vec(i), addr_width, stat_dims, stat_dims, stat_time, stat_time, init_rd_idx, init_wr_idx)).io
+      else
+        Module(new MemController(time_range.reduce(_*_), width(i) * vec(i), addr_width, dims, dims, time_range, time_range, init_rd_idx, init_wr_idx)).io
+    }
+  }
+
+  for(i <- 0 until num_op){
+    for(j <- 0 until bank_peid(i).length){
+      if(io_type(i)){
+        mem(i)(j).rd_valid := io.exec_valid
+        mem(i)(j).wr_valid := io.data(i).in.get(j).valid
+        pe_net(i)(j).to_mem := mem(i)(j).rd_data
+        mem(i)(j).wr_data := io.data(i).in.get(j).bits
+      }else{
+        mem(i)(j).wr_valid := pe_net(i)(j).to_mem.valid
+        mem(i)(j).rd_valid := io.out_valid
+        mem(i)(j).wr_data := pe_net(i)(j).to_mem
+        io.data(i).out.get(j) := mem(i)(j).rd_data
+      }
+    }
+  }
 }
