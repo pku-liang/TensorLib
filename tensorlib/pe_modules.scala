@@ -61,13 +61,11 @@ object DecoupledReg{
     x
   }
 }
-class InternalModule(width: Int, stat: Boolean, output: Boolean) extends Module{
+class InternalModule(width: Int, stat: Boolean, output: Boolean, back: Boolean) extends Module{
   val io = IO(new Bundle{
-    val in = Input(Valid(UInt(width.W)))
-    val out = Output(Valid(UInt(width.W)))
-    val from_pe = if(output) Some(Input(Valid(UInt(width.W)))) else None
-    val to_pe = Output(Valid(UInt(width.W)))
-    val sig_stat2trans = if(stat)Some(Input(Bool()))else None
+    val port = new PETensorIO(width, stat, back)
+    val from_cell = if(output) Some(Input(Valid(UInt(width.W)))) else None
+    val to_cell = Output(Valid(UInt(width.W)))
   })
 }
 object InternalModule{
@@ -75,38 +73,38 @@ object InternalModule{
     dataflow match {
       case DirectDataflow => if(io_type) new DirectInput(width) else new DirectOutput(width)
       case SystolicDataflow => if(io_type) new SystolicInput(width) else new SystolicOutput(width)
-      case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_Pipeline(width, latency)
+      case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput_OutCell(width, latency)
     }
   }
 }
-class SystolicInput(width: Int) extends InternalModule(width, false, false){
+class SystolicInput(width: Int) extends InternalModule(width, false, false, false){
   val reg = DecoupledReg(width)
-  val to_pe_delay1 = DecoupledReg(width)
-  val to_pe_delay2 = DecoupledReg(width)
-  to_pe_delay1 := reg
-  to_pe_delay2 := to_pe_delay1
-  reg <> io.in
-  io.out <> reg
-  io.to_pe <> to_pe_delay2
+  val to_cell_delay1 = DecoupledReg(width)
+  val to_cell_delay2 = DecoupledReg(width)
+  to_cell_delay1 := reg
+  to_cell_delay2 := to_cell_delay1
+  reg <> io.port.in
+  io.port.out <> reg
+  io.to_cell <> to_cell_delay2
 }
-class DirectInput(width: Int) extends InternalModule(width, false, false){
+class DirectInput(width: Int) extends InternalModule(width, false, false, false){
   val reg = DecoupledReg(width)
-  reg <> io.in
-  io.to_pe := reg
-  io.out := io.in
+  reg <> io.port.in
+  io.to_cell := reg
+  io.port.out := io.port.in
 }
-class DirectOutput(width: Int) extends InternalModule(width, false, true){
-  io.out <> io.from_pe.get
-  io.to_pe.bits <> 0.U
-  io.to_pe.valid <> true.B
+class DirectOutput(width: Int) extends InternalModule(width, false, true, false){
+  io.port.out <> io.from_cell.get
+  io.to_cell.bits <> 0.U
+  io.to_cell.valid <> true.B
 }
-class SystolicOutput(width: Int) extends InternalModule(width, false, true){
+class SystolicOutput(width: Int) extends InternalModule(width, false, true, false){
 
   val reg = DecoupledReg(width)
-  reg <> io.in
-  io.to_pe <> reg
-  io.out <> io.from_pe.get
-  //printf("to pe:%d %d,from pe:%d %d\n",io.to_pe.valid, io.to_pe.bits, io.from_pe.get.valid, io.from_pe.get.bits)
+  reg <> io.port.in
+  io.to_cell <> reg
+  io.port.out <> io.from_cell.get
+  //printf("to pe:%d %d,from pe:%d %d\n",io.to_cell.valid, io.to_cell.bits, io.from_cell.get.valid, io.from_cell.get.bits)
 }
 
 /*
@@ -120,7 +118,7 @@ stat表示用于PE计算的寄存器，trans表示用来传输的寄存器。当
 */
 
 
-class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, false){
+class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, false, false){
   val trans = DecoupledReg(width)
   
 
@@ -131,51 +129,90 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   //false.B)
   val write_trans_pos = RegInit(0.U(4.W))
   val read_stat_pos = RegInit(0.U(4.W))
-  io.out.valid := update.valid  //  update写满了，写入下一个buffer
-  io.out.bits := trans.bits
+  io.port.out.valid := update.valid  //  update写满了，写入下一个buffer
+  io.port.out.bits := trans.bits
   // update没更新完，且trans发送数据给update
   write_trans_pos := Mux(!update.valid, Mux(write_trans_pos+trans.valid.asUInt===latency.asUInt, 0.U, write_trans_pos+trans.valid.asUInt), write_trans_pos)
   when((!update.valid) && trans.valid){
     update.bits(write_trans_pos) := trans.bits
   }
-  printf("stat2trans: %d  trans:%d %d, write_pos:%d, update: %d, stat: %d, read_stat_pos: %d, to_PE:%d, %d\n",io.sig_stat2trans.get, trans.valid, trans.bits, write_trans_pos, update.valid, stat.valid,read_stat_pos, io.to_pe.valid, io.to_pe.bits)
+  printf("stat2trans: %d  trans:%d %d, write_pos:%d, update: %d, stat: %d, read_stat_pos: %d, to_cell:%d, %d\n",io.port.sig_stat2trans.get, trans.valid, trans.bits, write_trans_pos, update.valid, stat.valid,read_stat_pos, io.to_cell.valid, io.to_cell.bits)
   // 运算时，每次读取不同的stat
   read_stat_pos := Mux(stat.valid, Mux(read_stat_pos+1.U===latency.asUInt, 0.U, read_stat_pos+1.U),read_stat_pos)
   when(write_trans_pos===(latency-1).asUInt && trans.valid){
     update.valid := true.B
   }
-  reg_stat2trans(0) := io.sig_stat2trans.get
+  reg_stat2trans(0) := io.port.sig_stat2trans.get
   for(i <- 1 until latency+1){
     reg_stat2trans(i) := reg_stat2trans(i-1)
   }
   //printf("%d %d, %d %d\n",io.in.bits, reg_in2trans, stat.bits, trans.bits
-  trans <> io.in
+  trans <> io.port.in
   when(reg_stat2trans(0)){
     stat := update
     update.valid :=false.B
   }
-  io.to_pe.valid := RegNext(stat.valid, false.B)
-  io.to_pe.bits := RegNext(stat.bits(read_stat_pos), false.B)
+  io.to_cell.valid := RegNext(stat.valid, false.B)
+  io.to_cell.bits := RegNext(stat.bits(read_stat_pos), false.B)
 }
 
-class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, true){
+class StationaryOutput_OutCell(width: Int, latency: Int) extends InternalModule(width, true, true, false){
   // start from 0, latency cycles
   val reg_stat2trans = RegInit(false.B)
-  reg_stat2trans := io.sig_stat2trans.get
-  //stat := io.from_pe
+  reg_stat2trans := io.port.sig_stat2trans.get
+  //stat := io.from_cell
+  //printf("pe out: %d %d\n",io.from_cell.get.bits, io.from_cell.get.valid)
   when(reg_stat2trans){
-    io.out.bits := io.from_pe.get.bits
-    io.out.valid := io.from_pe.get.valid
+    io.port.out.bits := io.from_cell.get.bits
+    io.port.out.valid := io.from_cell.get.valid
     //trans := stat
   }.otherwise{
-    io.out.bits := 0.U
-    io.out.valid := false.B
+    io.port.out.bits := 0.U
+    io.port.out.valid := false.B
   }
-  io.to_pe.valid := true.B
-  io.to_pe.bits := Mux(reg_stat2trans, 0.U, io.from_pe.get.bits)
+  io.to_cell.valid := true.B
+  io.to_cell.bits := Mux(reg_stat2trans, 0.U, io.from_cell.get.bits)
 }
 
-
+class StationaryOutput_InCell(width: Int, latency: Int) extends InternalModule(width, true, true, true){
+  val trans = SyncReadMem(latency, UInt(width.W))
+  val move = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
+  val trans_in_addr = RegInit(0.U(width.W))
+  val trans_out_addr = RegInit(0.U(width.W))
+  val trans_move_fin = RegInit(false.B)
+  val trans_out_valid = RegInit(false.B)
+  val reg_stat2trans = RegInit(false.B)
+  reg_stat2trans := io.port.sig_stat2trans.get
+  // write to trans buffer
+  when(reg_stat2trans&&io.from_cell.get.valid){
+    trans.write(trans_in_addr, io.from_cell.get.bits)
+    trans_in_addr := Mux(trans_in_addr===(latency-1).asUInt, 0.U, trans_in_addr + 1.U)
+    when(trans_in_addr === (latency-1).asUInt){
+      trans_out_valid := true.B
+      trans_move_fin := false.B
+    }
+    //trans := stat
+  }
+  // current trans to move
+  val trans_read = trans.read(trans_out_addr)
+  when(io.port.out_ready.get && trans_out_valid){
+    trans_out_addr := Mux(trans_out_addr===(latency-1).asUInt, 0.U, trans_out_addr + 1.U)
+    when(trans_out_addr===(latency-1).asUInt){
+      trans_out_valid := false.B
+    }
+  }
+  when(RegNext(io.port.out_ready.get && trans_out_valid)){
+    move.bits := trans_read
+    move.valid := true.B
+  }.otherwise{
+    move := io.port.in
+  }
+  io.port.in_ready.get := RegNext(!trans_out_valid)
+  io.port.out := move
+  io.to_cell.valid := true.B
+  io.to_cell.bits := Mux(reg_stat2trans, 0.U, io.from_cell.get.bits)
+  printf("trans_read: %d, io.port.out_ready.get: %d,trans_out_valid: %d, move: %d %d, pe network out:%d %d\n", trans_read, io.port.out_ready.get,trans_out_valid, move.valid, move.bits, io.port.out.valid,io.port.out.bits)
+}
 
 // class StationaryOutput(width: Int) extends InternalModule(width, true){
 
@@ -188,12 +225,12 @@ class StationaryOutput_Pipeline(width: Int, latency: Int) extends InternalModule
 //   reg_stat2trans := io.sig_stat2trans.get
 //   //printf("%d %d\n",stat_C, trans_C)
 //   io.out:=trans
-//   stat := io.from_pe
+//   stat := io.from_cell
 //   when(reg_stat2trans){
 //     trans := stat
 //   }.elsewhen(reg_in2trans){
 //     trans := io.in
 //   }
-//   io.to_pe.valid := true.B
-//   io.to_pe.bits := Mux(reg_stat2trans, 0.U, stat.bits)
+//   io.to_cell.valid := true.B
+//   io.to_cell.bits := Mux(reg_stat2trans, 0.U, stat.bits)
 // }
