@@ -1,0 +1,44 @@
+#-----------------------------------------------------------
+# Vivado v2020.2 (64-bit)
+# SW Build 3064766 on Wed Nov 18 09:12:47 MST 2020
+# IP Build 3064653 on Wed Nov 18 14:17:31 MST 2020
+# Start of session at: Thu May 27 10:56:09 2021
+# Process ID: 14447
+# Current directory: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib
+# Command line: vivado
+# Log file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.log
+# Journal file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project /home/CORP.PKUSC.ORG/kirlia/xilinx/16x10_baseline/16x10_baseline.xpr
+Scanning sources...
+Finished scanning sources
+INFO: [IP_Flow 19-234] Refreshing IP repositories
+INFO: [IP_Flow 19-1704] No user IP repositories specified
+INFO: [IP_Flow 19-2313] Loaded Vivado IP repository '/home/CORP.PKUSC.ORG/kirlia/xilinx/Vivado/2020.2/data/ip'.
+WARNING: [IP_Flow 19-2162] IP 'My_fmac' is locked:
+* Current project part 'xcvu9p-flga2104-2-e' and the part 'xcvu9p-flgb2104-2-e' used to customize the IP 'My_fmac' do not match.
+INFO: [IP_Flow 19-3899] Cannot get the environment domain name variable for the component vendor name. Setting the vendor name to 'user.org'.
+open_project: Time (s): cpu = 00:00:24 ; elapsed = 00:00:14 . Memory (MB): peak = 7550.371 ; gain = 49.129 ; free physical = 86769 ; free virtual = 167666
+update_compile_order -fileset sources_1
+INFO: [IP_Flow 19-3899] Cannot get the environment domain name variable for the component vendor name. Setting the vendor name to 'user.org'.
+open_run synth_1 -name synth_1
+Design is defaulting to impl run constrset: constrs_1
+Design is defaulting to synth run part: xcvu9p-flga2104-2-e
+INFO: [Device 21-403] Loading part xcvu9p-flga2104-2-e
+Netlist sorting complete. Time (s): cpu = 00:00:45 ; elapsed = 00:00:46 . Memory (MB): peak = 14172.879 ; gain = 301.152 ; free physical = 89473 ; free virtual = 170781
+INFO: [Netlist 29-17] Analyzing 61810 Unisim elements for replacement
+INFO: [Netlist 29-28] Unisim Transformation completed in 52 CPU seconds
+INFO: [Project 1-479] Netlist was created with Vivado 2020.2
+INFO: [Project 1-570] Preparing netlist for logic optimization
+Parsing XDC File [/home/CORP.PKUSC.ORG/kirlia/xilinx/algo_muldsp.xdc]
+Finished Parsing XDC File [/home/CORP.PKUSC.ORG/kirlia/xilinx/algo_muldsp.xdc]
+INFO: [Opt 31-138] Pushed 0 inverter(s) to 0 load pin(s).
+Netlist sorting complete. Time (s): cpu = 00:00:02 ; elapsed = 00:00:02 . Memory (MB): peak = 19389.055 ; gain = 0.000 ; free physical = 85531 ; free virtual = 166863
+INFO: [Project 1-111] Unisim Transformation Summary:
+  A total of 8415 instances were transformed.
+  DSP48E1 => DSP48E2 (DSP_ALU, DSP_A_B_DATA, DSP_C_DATA, DSP_MULTIPLIER, DSP_M_DATA, DSP_OUTPUT, DSP_PREADD, DSP_PREADD_DATA): 2640 instances
+  DSP48E2 => DSP48E2 (DSP_ALU, DSP_A_B_DATA, DSP_C_DATA, DSP_MULTIPLIER, DSP_M_DATA, DSP_OUTPUT, DSP_PREADD, DSP_PREADD_DATA): 2640 instances
+  RAM32M16 => RAM32M16 (RAMD32(x14), RAMS32(x2)): 3135 instances
+
+open_run: Time (s): cpu = 00:11:34 ; elapsed = 00:16:06 . Memory (MB): peak = 19399.059 ; gain = 11798.875 ; free physical = 84441 ; free virtual = 165817
