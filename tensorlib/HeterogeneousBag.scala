@@ -1,4 +1,4 @@
-package systolic
+package tensorlib
 
 import Chisel._
 import chisel3.core.Record

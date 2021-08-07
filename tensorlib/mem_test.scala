@@ -1,4 +1,4 @@
-package systolic
+package tensorlib
 
 import chisel3._
 import chisel3.util._
@@ -13,7 +13,7 @@ class Test_Mem extends Module{
   val data_width = Array(32, 32, 32)
   val addr_width = 20
   val pe_size = (10, 16)
-  val mat_len = 256
+  val mat_len = 6
   val latency = 4
   val rnd = new scala.util.Random
   val num_buffer = 2
@@ -27,7 +27,9 @@ class Test_Mem extends Module{
   val mem_out_time = Array(latency, pe_size._2, num_buffer)
   val mem_out_size = latency*pe_size._2*num_buffer
   val mem_size = latency*mat_len*num_buffer
-  println("mem_size:",mem_size)
+  //println("mem_size:",mem_size)
+  val cycle = RegInit(0.U(10.W))
+  cycle := cycle + 1.U
   val mem = Module(new MemController(
   // to pe: latency -- len -- group
   // to mem: len -- latency -- group
@@ -42,13 +44,15 @@ class Test_Mem extends Module{
     wr_init,
     rd_init
   )).io
+  
   mem.rd_valid := true.B
   mem.wr_valid := true.B
-  mem.wr_data := 1.U
-  printf("%d %d\n",mem.rd_data.valid, mem.rd_data.bits)
+  mem.wr_data.bits := cycle
+  mem.wr_data.valid := 1.U
+  //printf("cycle: %d, write data=%d %d, read=%d %d\n",cycle,mem.wr_data.valid, mem.wr_data.bits, mem.rd_data.valid, mem.rd_data.bits)
 }
 class Test_Mem_Tester(c: Test_Mem) extends PeekPokeTester(c){
-  for(i <- 0 until 10000){
+  for(i <- 0 until 120){
     step(1)
   }
 }
