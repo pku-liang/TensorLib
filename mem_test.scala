@@ -11,8 +11,9 @@ class Test_Mem extends Module{
   val io =IO(new Bundle{})
   
   val data_width = Array(32, 32, 32)
+  val vec = 1
   val addr_width = 20
-  val pe_size = (10, 16)
+  val pe_size = (4, 4)
   val mat_len = 6
   val latency = 4
   val rnd = new scala.util.Random
@@ -27,7 +28,7 @@ class Test_Mem extends Module{
   val mem_out_time = Array(latency, pe_size._2, num_buffer)
   val mem_out_size = latency*pe_size._2*num_buffer
   val mem_size = latency*mat_len*num_buffer
-  //println("mem_size:",mem_size)
+  println("mem_size:",mem_size)
   val cycle = RegInit(0.U(10.W))
   cycle := cycle + 1.U
   val mem = Module(new MemController(
@@ -36,6 +37,7 @@ class Test_Mem extends Module{
   // low -- high
     mem_size,
     data_width(0),
+    vec, 
     addr_width,
     mem_dim,
     mem_dim,
@@ -47,6 +49,7 @@ class Test_Mem extends Module{
   
   mem.rd_valid := true.B
   mem.wr_valid := true.B
+  mem.wr_update := (cycle>50.U)
   mem.wr_data.bits := cycle
   mem.wr_data.valid := 1.U
   //printf("cycle: %d, write data=%d %d, read=%d %d\n",cycle,mem.wr_data.valid, mem.wr_data.bits, mem.rd_data.valid, mem.rd_data.bits)

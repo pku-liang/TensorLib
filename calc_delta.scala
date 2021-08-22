@@ -43,26 +43,10 @@ object CalcDelta {
     d.map(x=>x.mapValues(_.toInt))
   }
 }
-class TensorDataflow{
-  var time_range = Array[Int]()
-  var mem_range = Array[Int]()
-  var rvecs = Array[DenseVector[Int]]()
-  var top_pes = Array[(Int, Int)]()
-}
-class SAConfig{
-  var pe_size = (0, 0)
-  var exec_time = Array[Int]()
-  var latency = 0
-  var num_op = 0
-  var width = Array[Int]()
-  var simd = Array[Int]()
-  var io_type = Array[Int]()
-  var op_type = 0
-  var ops_dataflow = Array[TensorDataflow]()
-}
-object gen_dataflow{
+
+object Gen_dataflow{
   def get_valid_range(opSpec: OperatorSpec, stt: DenseMatrix[Int], time_init: Array[Int]) : Array[Int] = {
-    
+
     val sttrange = opSpec.getSTTRange(stt).toArray
     val valid_time = TraverseTensor(time_init).filter(x=>{
       val stt_inst = Array(0, 0) ++ x//.asInstanceOf[Array[Int]]
@@ -71,34 +55,23 @@ object gen_dataflow{
         a>=0 && a < opSpec.iterList(b).ubound
       }}
     })
-    //var time_ranger = Array.fill(sttrange.length-2)(0)
-    
-    // valid_time.foreach(x=>{
-    //   x.zipWithIndex.foreach{case (a, b)=>{
-    //     time_ranger(b) = time_ranger(b).max(a+1)
-    //   }}
-    // })
-    //println("time_range"+time_ranger.mkString(" "))
     val time_range = (0 until sttrange.length-2).map(i=>{
       valid_time.map(_(i)+1).reduce(_ max _)
     })
-    //println("get_valid_range:"+time_init.mkString(" "))
-    //println("time_range:"+time_range.toArray.mkString(" "))
-    //time_range.toArray
     time_init
   }
-  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : PEArray2D = {
-    val config = new SAConfig()
+  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : SAConfig = {
+    val config = new SAConfig(stt)
 
     val sttrange = opSpec.getSTTRange(stt).toArray
     config.num_op = opSpec.numTensor
     config.pe_size = (sttrange(0), sttrange(1))
     config.exec_time = sttrange.drop(2)
     config.latency = opSpec.latency
-    config.simd = Array.fill(opSpec.numTensor)(0)
+    config.simd = Array.fill(opSpec.numTensor)(1)
     config.width = opSpec.tensorList.map(_.width).toArray
     config.io_type = Array(false, true, true)
-
+    config.stt = stt
     val pe_h = sttrange(0)
     val pe_w = sttrange(1)
     val pes = (0 until pe_h*pe_w).map(x=>(x/pe_w,x%pe_w))
@@ -107,201 +80,30 @@ object gen_dataflow{
     val time_init_s = time_init_ns.updated(0, pe_w)
     val time_range_ns = this.get_valid_range(opSpec, stt,time_init_ns)
     val time_range_s = this.get_valid_range(opSpec, stt,time_init_s)
-    config.ops_dataflow = opSpec.tensorList.map(ts=>{
-      val rvecs = CalcDelta(opSpec.getAccessMat(ts).mapValues(_.toInt),stt)
-      val ainvt = (opSpec.getAccessMat(ts).mapValues(_.toDouble) * inv(stt.mapValues(_.toDouble))).mapValues(_.toInt)
-      //println(rvecs)
-      val stat_vec = rvecs.filter(x=>{(x.length <= 3 || x(3 to -1).reduce(_ | _)==0) && x(0)==0 && x(1)==0})
-      val pe_stat = stat_vec.length!=0
-      //println("pe_stat:"+pe_stat)
-      val time_range = if(pe_stat) time_range_s else time_range_ns
-      //println("time_range:"+time_range_s.mkString(" ")+","+time_range_ns.mkString(" "))
-      val pe_rvec = rvecs.filter(x=>{x.length <= 3 || x(3 to -1).reduce(_ | _)==0}).map(_.toArray)
-      .map(x=>{ 
-        var upd = x
-        if (x(0)==0&&x(1)==0){
-          upd(1) = 1
-        }
-        upd
-      })
-      // mem reuse vector
-      val mem_rvec = rvecs.filter(x=>{x.length > 3 && x(0 to 1).reduce(_ | _)==0 && x(3 to -1).reduce(_|_)!=0})
-      //val inter_rvec = 
-      var top_pes = pes
-      //println("top_pes:"+top_pes.length)
-      pe_rvec.foreach(x=>{
-        val dir = (x(0), x(1))
-        top_pes=top_pes.filter(idx=>{idx._1 - dir._1 < 0 || idx._1 - dir._1 >= pe_h || idx._2 - dir._2 < 0 || idx._2 - dir._2 >= pe_w})
-      })
-      //println("top_pes:"+top_pes)
-      val peid = top_pes(0)
-      val tensor_range = opSpec.getAddrRange(ts).toArray
-      //println("tensor range:"+tensor_range.mkString(" "))
-      //给定TOP PEID，寻找这个PEID对应的t1的最大和最小值（在这个时间可以获取有效的数据）
-      val max_t = 200
-      val min_t = -200
-      var st_t = 0
-      var ed_t = 0
-      for(i <- min_t until max_t){
-        val st_vec = new DenseVector(Array(peid._1, peid._2, i) ++ Array.fill(sttlen-3)(0))
-        val tensor_idx = (ainvt * st_vec).toArray
-        val v=(tensor_idx zip tensor_range).forall{case(idx, r)=>{
-          idx >= 0 && idx < r
-        }}
-        val st_vec_next = new DenseVector(Array(peid._1, peid._2, i+1) ++ Array.fill(sttlen-3)(0))
-
-        val tensor_idx_next = (ainvt * st_vec_next).toArray
-        val v_next=(tensor_idx_next, tensor_range).zipped.forall{case(idx, r)=>{
-          idx >= 0 && idx < r
-        }}
-        if(!v && v_next)
-          st_t = i
-        if(v &&(!v_next))
-          ed_t = i
-      }
-      //print("INNER LOOP:",ed_t, st_t)
-      val mem_inner = ed_t - st_t 
-
-      var mem_range = time_range.clone()
-      mem_rvec.foreach(x=>{
-        val a = x.toArray.drop(2)
-        val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
-          x!=0
-        }}.get
-        val a_m1 = a.map(x=>{
-          -(x/last_id._1)
-        })
-        a.zipWithIndex.foreach{case(x, id)=>{
-          mem_range(id) = mem_range(id) + (mem_range(last_id._2)-1) * a_m1(id) 
-        }}
-        mem_range(last_id._2) = 1
-      })
-      val rm_dims = mem_rvec.map(x=>{
-        val a = x.toArray.drop(2)
-        val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
-          x!=0
-        }}.get
-        last_id._2
-      })
-      
-      // var mem_dims = (0 until time_range.length).map(x=>{
-      //   if (rm_dims.contains(x))
-      //     (Array(1) ++ mem_range.slice(0, x-1)).reduce(_*_)
-      //   else
-      //     (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
-      // })
-      val bank_size = if(pe_stat)
-          mem_range
-        else
-          mem_range.updated(0, mem_inner)
-      println("mem_range"+bank_size.mkString(" ")+","+ top_pes.length)
-      //bank_size.foreach(x=>println(x.mkString(" ")))
-      //bank_size.reduce(_*_) * top_pes.length
-      //(time_range, mem_dims, mem_range.reduce(_*_)*top_pes.length)
-      var dataflow = new TensorDataflow()
-      dataflow.time_range = time_range
-      dataflow.mem_range = mem_range
-      dataflow.rvecs = rvecs
-      dataflow.top_pes = top_pes
-      dataflow
-    }).toArray
-
-
-    val op_dataflow = opSpec.tensorList.map(t=>{
-      var time_range = time_range_ns
-      val rvecs = CalcDelta(opSpec.getAccessMat(t).mapValues(_.toInt),stt)
-      // println(rvecs)
-      // // PE reuse vector:
-      val pe_rvec = rvecs.filter(x=>{x(3 to -1).reduce(_ | _)==0}).map(_.toArray)
-      .map(x=>{ 
-        var upd = x
-        if (x(0)==0&&x(1)==0){
-          time_range = time_range_s
-          upd(1) = 1
-        }
-        upd
-      })
-      // mem reuse vector
-      val mem_rvec = rvecs.filter(x=>{x(0 to 1).reduce(_ | _)==0 && x(3 to -1).reduce(_|_)!=0})
-      //println("mem_rvec:"+mem_rvec)
-      var top_pes = pes
-      pe_rvec.foreach(x=>{
-        val dir = (x(0), x(1))
-        top_pes=top_pes.filter(idx=>{idx._1 - dir._1 < 0 || idx._1 - dir._1 >= pe_h || idx._2 - dir._2 < 0 || idx._2 - dir._2 >= pe_w})
-      })
-      //println(top_pes)
-      var mem_range = time_range
-      
-      mem_rvec.foreach(x=>{
-        val a = x.toArray.drop(2)
-        val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
-          x!=0
-        }}.get
-        val a_m1 = a.map(x=>{
-          -(x/last_id._1)
-        })
-        a.zipWithIndex.foreach{case(x, id)=>{
-          mem_range(id) = mem_range(id) + mem_range(last_id._2) * a_m1(id)
-        }}
-        mem_range(last_id._2) = 1
-      })
-      val rm_dims = mem_rvec.map(x=>{
-        val a = x.toArray.drop(2)
-        val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
-          x!=0
-        }}.get
-        last_id._2
-      })
-      println("mem_range"+mem_range.mkString(" "))
-      var mem_dims = (0 until time_range.length).map(x=>{
-        if (rm_dims.contains(x))
-          (Array(1) ++ mem_range.slice(0, x-1)).reduce(_*_)
-        else
-          (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
-      })
-      println("mem_dims"+mem_dims)
-      (time_range, mem_dims, mem_range)
-    })
-    println("config",op)
-    val vec = opSpec.tensorList.map(x=>1)
-    val width = opSpec.tensorList.map(_.width)
-    val access = opSpec.tensorList.map(x=>opSpec.getAccessMat(x).mapValues(_.toInt))
-    val io_type = Array(false, true, true)
-    val op_type = 0
-    val latency = opSpec.latency
-    val time_range = config.map(x=>{
-      Array(latency) ++ x._1
-    })
-    val mem_range = config.map(x=>{
-      Array(latency) ++ x._3
-    })
-    val mem_dims = config.map(x=>{
-      Array(1) ++ x._2.map(t=>t*latency)
-    })
-    println("time_range:"+time_range.map(_.mkString(" ")))
-    println("mem_dims:"+mem_dims.map(_.mkString(" ")))
-    val mem_size = config.map(x=>x._3.reduce(_*_))
-    new PEArray2D(
-      (pe_h,pe_w), 
-      vec, 
-      width, 
-      16,
-      stt, 
-      access, 
-      io_type, 
-      latency,  
-      op_type, 
-      time_range,
-      mem_range,
-      mem_dims,
-      mem_size,
-      false
-    )
+    val sttlen = sttrange.length
+    config.tensors = Calc_Mem(opSpec, stt).toArray
+    config
 
   }
 }
+object Min_time{
+  def check(peid: (Int, Int), t1: Int, invstt: DenseMatrix[Int]) : Boolean = {
+    val stt_len = invstt.rows
+    val st_iter = Array(peid._1, peid._2, t1) ++ Array.fill(stt_len - 3)(0)
+    val iter =  invstt.t * DenseVector(st_iter)
+    iter.toArray.forall(_>=0)
+  }
+  def apply(peid: (Int, Int), stt: DenseMatrix[Int]): Int = {
+    val invstt = inv(stt.mapValues(_.toDouble)).mapValues(_.toInt)
+    var t1 = -1
+    while(!check(peid, t1, invstt)){
+      t1 = t1 + 1
+    }
+    t1
+  }
+}
 object Calc_Mem{
-  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) = {
+  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : List[TensorConfig] = {
     val sttrange = opSpec.getSTTRange(stt).toArray
     val sttlen = sttrange.length
     //println("sttrange:"+sttrange.mkString(" "))
@@ -310,35 +112,36 @@ object Calc_Mem{
     val pes = (0 until pe_h*pe_w).map(x=>(x/pe_w,x%pe_w))
     val time_init_ns = sttrange.drop(2)
     val time_init_s = time_init_ns.updated(0, pe_w)
-    //println("time_init_s:"+time_init_s.mkString(" "))
-    val time_range_ns = gen_dataflow.get_valid_range(opSpec, stt,time_init_ns)
-    val time_range_s = gen_dataflow.get_valid_range(opSpec, stt,time_init_s)
+    //println("time_init:"+time_init_ns.mkString(" "))
+    val time_range_ns = Gen_dataflow.get_valid_range(opSpec, stt,time_init_ns)
+    val time_range_s = Gen_dataflow.get_valid_range(opSpec, stt,time_init_s)
     //println(time_range_ns.mkString(" "),"|", time_range_s.mkString(" "))
     val config = opSpec.tensorList.map(ts=>{
-      
+
       val rvecs = CalcDelta(opSpec.getAccessMat(ts).mapValues(_.toInt),stt)
       val ainvt = (opSpec.getAccessMat(ts).mapValues(_.toDouble) * inv(stt.mapValues(_.toDouble))).mapValues(_.toInt)
       //println(rvecs)
       val stat_vec = rvecs.filter(x=>{(x.length <= 3 || x(3 to -1).reduce(_ | _)==0) && x(0)==0 && x(1)==0})
       val pe_stat = stat_vec.length!=0
       //println("pe_stat:"+pe_stat)
-      val time_range = if(pe_stat) time_range_s else time_range_ns
+
       //println("time_range:"+time_range_s.mkString(" ")+","+time_range_ns.mkString(" "))
       val pe_rvec = rvecs.filter(x=>{x.length <= 3 || x(3 to -1).reduce(_ | _)==0}).map(_.toArray)
-      .map(x=>{ 
+      .map(x=>{
         var upd = x
         if (x(0)==0&&x(1)==0){
           upd(1) = 1
         }
         upd
       })
-      
+
       // mem reuse vector
       val mem_rvec = rvecs.filter(x=>{x.length > 3 && x(0 to 1).reduce(_ | _)==0 && x(3 to -1).reduce(_|_)!=0})
-      //val inter_rvec = 
+      //val inter_rvec =
       var top_pes = pes
       //println("top_pes:"+top_pes.length)
       pe_rvec.foreach(x=>{
+        
         val dir = (x(0), x(1))
         top_pes=top_pes.filter(idx=>{idx._1 - dir._1 < 0 || idx._1 - dir._1 >= pe_h || idx._2 - dir._2 < 0 || idx._2 - dir._2 >= pe_w})
       })
@@ -369,9 +172,10 @@ object Calc_Mem{
           ed_t = i
       }
       //print("INNER LOOP:",ed_t, st_t)
-      val mem_inner = ed_t - st_t 
-
+      val mem_inner = ed_t - st_t
+      val time_range = if(pe_stat) time_range_s else time_range_ns.updated(0, mem_inner)
       var mem_range = time_range.clone()
+      var access_mat = DenseMatrix.eye[Int](mem_range.length)
       mem_rvec.foreach(x=>{
         val a = x.toArray.drop(2)
         val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
@@ -381,37 +185,56 @@ object Calc_Mem{
           -(x/last_id._1)
         })
         a.zipWithIndex.foreach{case(x, id)=>{
-          mem_range(id) = mem_range(id) + (mem_range(last_id._2)-1) * a_m1(id) 
+          mem_range(id) = mem_range(id) + (mem_range(last_id._2)-1) * a_m1(id)
+          access_mat(id,last_id._2) += a_m1(id)
         }}
         mem_range(last_id._2) = 1
       })
+      //println("time range: "+time_range.mkString(" "))
+      //println("mem range_st: "+mem_range.mkString(" "))
       val rm_dims = mem_rvec.map(x=>{
         val a = x.toArray.drop(2)
         val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
           x!=0
         }}.get
         last_id._2
+      }).sortWith(_>_)
+      rm_dims.foreach(x=>{
+
+        access_mat.delete(x, Axis._0)
       })
-      
-      // var mem_dims = (0 until time_range.length).map(x=>{
-      //   if (rm_dims.contains(x))
-      //     (Array(1) ++ mem_range.slice(0, x-1)).reduce(_*_)
-      //   else
-      //     (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
-      // })
-      val bank_size = if(pe_stat)
-          mem_range
-        else
-          mem_range.updated(0, mem_inner)
-      println("mem_range"+bank_size.mkString(" ")+","+ top_pes.length)
+      mem_range = mem_range.filter(_!=1)
+      // if(!pe_stat)
+      //   mem_range = mem_range.updated(0, mem_inner)
+      //println("mem range: "+mem_range.mkString(" "))
+      //println("RM: "+rm_dims.mkString(" "))
+      val mem_range_scale = (0 until time_range.length).map(x=>{
+        (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
+      })
+      //println("access mat:" + access_mat)
+      //println("mem_range_scale:"+mem_range_scale.mkString(" "))
+      var mem_dims = (access_mat.t * DenseVector(mem_range_scale.toArray)).toArray
+      //println("mem dims: "+mem_dims.mkString(" "))
+
+      //println("mem_range"+mem_range.mkString(" ")+","+ top_pes.length)
       //bank_size.foreach(x=>println(x.mkString(" ")))
       //bank_size.reduce(_*_) * top_pes.length
       //(time_range, mem_dims, mem_range.reduce(_*_)*top_pes.length)
-      (time_range, mem_range, top_pes)
+      var dataflow = new TensorConfig()
+      dataflow.time_range = time_range.toArray
+      dataflow.mem_range = mem_range
+      dataflow.rvecs = rvecs.toArray
+      dataflow.top_pes = top_pes.toArray
+      dataflow.mem_dims = mem_dims
+      dataflow
     })
     //val bank_mult = config.map(y=>y.reduce(_*_))
     //val res = bank_mult.map(x=>x.reduce(_+_))
-    //println("size: "+config)
+    //println("size: "+config.map(x=>x.mem_range.reduce(_*_)*x.top_pes.length).reduce(_+_))
+    //println("num: "+config.map(x=>x.top_pes.length).reduce(_+_))
+    val t_size = config.map(x=>x.mem_range.reduce(_*_)*x.top_pes.length).reduce(_+_)
+    val t_band = config.map(x=>x.top_pes.length).reduce(_+_)
+    println(t_size+","+t_band)
     config
   }
 }

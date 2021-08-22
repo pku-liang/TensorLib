@@ -11,6 +11,7 @@ import chisel3._
 
 import breeze.linalg._
 import breeze.numerics._
+import chisel3.stage.ChiselStage
 
 object InterfaceMain extends App {
   val opSpec = new OperatorSpec {
@@ -37,7 +38,7 @@ object InterfaceMain extends App {
     (0,0,0,0,1,0), 
     (0,0,1,0,0,0)
   )
-  gen_dataflow(opSpec, stt)
+  //gen_dataflow(opSpec, stt)
   
   
   
@@ -99,7 +100,7 @@ object InterfaceMain extends App {
   // println(s)
 }
 
-object MemCalculator extends App{
+object MemCalculator_Conv extends App{
   val opSpec = new OperatorSpec {
     val k :: c :: y :: x :: r :: s :: Nil = genIterators(6)
     val o :: w :: i :: Nil                = genTensor(3)
@@ -132,20 +133,22 @@ object MemCalculator extends App{
     x.zipWithIndex.foreach{case(i, j)=>{
       stt(i,j)=1
     }}
+    Calc_Mem(opSpec, stt)
     //println(stt)
-    println("MEM_SIZE:"+Calc_Mem(opSpec, stt).reduce(_+_))
+    //println("MEM_SIZE:"+Calc_Mem(opSpec, stt).reduce(_+_))
   })
   
   // val stt = DenseMatrix(
-  //  (1, 0,  0,  0,  0,  0),  
-  //  (0, 1,  0,  0,  0,  0),  
-  //  (0, 0,  1,  0,  0,  0),  
-  //  (0, 0,  0,  1,  0,  0),  
-  //  (0, 0,  0,  0,  1,  0),  
-  //  (0, 0,  0,  0,  0,  1)
+  //   (1,0,0,0,0,0), 
+  //   (0,1,0,0,0,0), 
+  //   (1,1,0,1,0,0), 
+  //   (0,0,0,0,0,1), 
+  //   (0,0,0,0,1,0), 
+  //   (0,0,1,0,0,0)
   // )
   // println(stt)
-  // println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
+  // val config = Gen_dataflow(opSpec, stt)
+  // (new ChiselStage).emitVerilog(new PEArray(config))
   // // r, y, c
   // // o(y) = I(y+r) * W(r, c)
   // // k c y x r s
@@ -161,7 +164,7 @@ object MemCalculator extends App{
 }
 
 // 1920 + 3312 + 
-object MemCalculator2 extends App{
+object MemCalculator_Depth extends App{
   val opSpec = new OperatorSpec {
     val k :: y :: x :: r :: s :: Nil = genIterators(5)
     val o :: w :: i :: Nil                = genTensor(3)
@@ -178,44 +181,67 @@ object MemCalculator2 extends App{
     i.setWidth(16)
   }
   val idx = List(0,1,2,3,4).permutations
-
-  // val x=List(0,1,2,3,4,5)
-  // var stt = DenseMatrix.zeros[Int](6,6)
-  // x.zipWithIndex.foreach{case(i, j)=>{
-  //   stt(i,j)=1
-  // }}
-  // println(stt)
-  // println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
-
-
   idx.foreach(x=>{
     var stt = DenseMatrix.zeros[Int](5,5)
     x.zipWithIndex.foreach{case(i, j)=>{
       stt(i,j)=1
     }}
-    //println(stt)
-    println("MEM_SIZE:"+Calc_Mem(opSpec, stt).reduce(_+_))
+    Calc_Mem(opSpec, stt)
   })
-  
-  // val stt = DenseMatrix(
-  //  (1,  0,  0,  0,  0,  0),  
-  //  (0,  0,  0,  1,  0,  0),  
-  //  (0,  0,  0,  0,  0,  1),  
-  //  (0,  0,  0,  0,  1,  0),  
-  //  (0,  1,  0,  0,  0,  0),  
-  //  (0,  0,  1,  0,  0,  0)
-  // )
-  // k c y x r s
-  // val stt = DenseMatrix(
-  //   (1,0,0,0,0,0), 
-  //   (0,0,0,1,0,0), 
-  //   (0,0,0,0,0,1), 
-  //   (0,1,0,0,0,0), 
-  //   (0,0,0,0,1,0), 
-  //   (0,0,1,0,0,0)
-  // )
-  // println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
 }
+
+object MemCalculator_Mttkrp extends App{
+  val opSpec = new OperatorSpec {
+    val i :: j :: k :: l :: Nil = genIterators(4)
+    val y :: a :: b :: c :: Nil                = genTensor(4)
+
+    setExpr(y(i)(j) += a(i)(k)(l) * b(k)(l) * c(l)(j))
+    i.setRange(16)
+    j.setRange(16)
+    k.setRange(16)
+    l.setRange(16)
+    setLatency(1)
+    y.setWidth(16)
+    a.setWidth(16)
+    b.setWidth(16)
+    c.setWidth(16)
+  }
+  val idx = List(0,1,2,3).permutations
+  idx.foreach(x=>{
+    var stt = DenseMatrix.zeros[Int](4,4)
+    x.zipWithIndex.foreach{case(i, j)=>{
+      stt(i,j)=1
+    }}
+    Calc_Mem(opSpec, stt)
+  })
+}
+object MemCalculator_ttmc extends App{
+  val opSpec = new OperatorSpec {
+    val i :: j :: k :: l :: m :: Nil = genIterators(5)
+    val y :: a :: b :: c :: Nil                = genTensor(4)
+
+    setExpr(y(i)(j)(k) += a(i)(l)(m) * b(l)(j) * c(m)(k))
+    i.setRange(20)
+    j.setRange(16)
+    k.setRange(12)
+    l.setRange(8)
+    m.setRange(12)
+    setLatency(1)
+    y.setWidth(16)
+    a.setWidth(16)
+    b.setWidth(16)
+    c.setWidth(16)
+  }
+  val idx = List(0,1,2,3,4).permutations
+  idx.foreach(x=>{
+    var stt = DenseMatrix.zeros[Int](5,5)
+    x.zipWithIndex.foreach{case(i, j)=>{
+      stt(i,j)=1
+    }}
+    Calc_Mem(opSpec, stt)
+  })
+}
+
 object MemCalc_GEMM extends App{
   val opSpec = new OperatorSpec {
     val k :: c :: x :: Nil = genIterators(3)
@@ -225,31 +251,15 @@ object MemCalc_GEMM extends App{
     k.setRange(16)
     c.setRange(16)
     x.setRange(20)
+    setLatency(4)
+    o.setWidth(16)
+    w.setWidth(16)
+    i.setWidth(16)
   }
-  // val idx = List(0,1,2,3,4,5).permutations
-
-  // val x=List(0,1,2,3,4,5)
-  // var stt = DenseMatrix.zeros[Int](6,6)
-  // x.zipWithIndex.foreach{case(i, j)=>{
-  //   stt(i,j)=1
-  // }}
-  // println(stt)
-  // println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
-
-
-  // idx.foreach(x=>{
-  //   var stt = DenseMatrix.zeros[Int](6,6)
-  //   x.zipWithIndex.foreach{case(i, j)=>{
-  //     stt(i,j)=1
-  //   }}
-  //   println(stt)
-  //   println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
-  // })
-  
   val stt = DenseMatrix(
    (1,  0,  0),  
-   (1,  1,  0),  
-   (0,  0,  1),  
+   (0,  1,  0),  
+   (1,  1,  1),  
   )
-  println("MEM_SIZE:"+Calc_Mem(opSpec, stt))
+  val config = Calc_Mem(opSpec, stt)
 }

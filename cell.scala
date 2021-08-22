@@ -108,28 +108,28 @@ class ComputeCell_Latency(vec: Array[Int], width: Int, latency: Int) extends Mod
       }
     }) 
   })
-  val vec_a = Wire(Vec(vec(0), UInt(width.W)))
-  val vec_b = Wire(Vec(vec(1), UInt(width.W)))
-  val vec_c_in = Wire(Vec(vec(2), UInt(width.W)))
-  val vec_c_out = Wire(Vec(vec(2), UInt(width.W)))
+  val vec_a = Wire(Vec(vec(1), UInt(width.W)))
+  val vec_b = Wire(Vec(vec(2), UInt(width.W)))
+  val vec_c_in = Wire(Vec(vec(0), UInt(width.W)))
+  val vec_c_out = Wire(Vec(vec(0), UInt(width.W)))
   //printf("pe_a: %d, pe_b: %d, pe_c: %d, pe_out: %d\n",vec_a(0),vec_b(0),vec_c_in(0),vec_c_out(0))
-  val delay_a = ShiftRegister(vec_a, latency, 0.U.asTypeOf(Vec(vec(0), UInt(width.W))), true.B)
-  val delay_b = ShiftRegister(vec_b, latency, 0.U.asTypeOf(Vec(vec(1), UInt(width.W))), true.B)
-  val delay_c = ShiftRegister(vec_c_in, latency, 0.U.asTypeOf(Vec(vec(2), UInt(width.W))), true.B)
+  val delay_a = ShiftRegister(vec_a, latency, 0.U.asTypeOf(Vec(vec(1), UInt(width.W))), true.B)
+  val delay_b = ShiftRegister(vec_b, latency, 0.U.asTypeOf(Vec(vec(2), UInt(width.W))), true.B)
+  val delay_c = ShiftRegister(vec_c_in, latency, 0.U.asTypeOf(Vec(vec(0), UInt(width.W))), true.B)
 
-  for(i <- 0 until vec(0)){
-    vec_a(i):=io.data(0).in(i*width+width-1, i*width)
-  }
   for(i <- 0 until vec(1)){
-    vec_b(i):=io.data(1).in(i*width+width-1, i*width)
+    vec_a(i):=io.data(1).in(i*width+width-1, i*width)
   }
   for(i <- 0 until vec(2)){
-    vec_c_in(i):=io.data(2).in(i*width+width-1, i*width)
+    vec_b(i):=io.data(2).in(i*width+width-1, i*width)
+  }
+  for(i <- 0 until vec(0)){
+    vec_c_in(i):=io.data(0).in(i*width+width-1, i*width)
   }
   // val fadd = for(i <- 0 until m*n) yield Module(new My_fadd).io
   // val fmul = for(i <- 0 until m*n) yield Module(new My_fmul).io
-  for(i <- 0 until vec(0)){
-    for(j <- 0 until vec(1)){
+  for(i <- 0 until vec(1)){
+    for(j <- 0 until vec(2)){
       // fmul.clk = clock
       // fmul.s_axis_a_tvalid:=true.B
       // fmul.s_axis_b_tvalid:=true.B
@@ -138,12 +138,12 @@ class ComputeCell_Latency(vec: Array[Int], width: Int, latency: Int) extends Mod
       // fadd.s_axis_a_tdata:=fmul.m_axis_result_tdata
       // fadd.s_axis_a_tvalid:=fmul.m_axis_result_tvalid
       // fadd.s_axis_b_tdata:=vec()
-      vec_c_out(i*vec(1)+j):=delay_c(i*vec(1)+j) + delay_a(i) * delay_b(j)
+      vec_c_out(i*vec(0)+j):=delay_c(i*vec(0)+j) + delay_a(i) * delay_b(j)
     }
   }
-  io.data(2).out := vec_c_out.asUInt
+  io.data(0).out := vec_c_out.asUInt
   io.data(1).out := io.data(1).in
-  io.data(0).out := io.data(0).in
+  io.data(2).out := io.data(2).in
 }
 class ComputeCell_Int(vec: Array[Int], width: Array[Int]) extends Module{
   val io = IO(new Bundle {
@@ -241,6 +241,28 @@ class ComputeCell_Dummy(vec: Array[Int], width: Array[Int], num_op : Int) extend
   io.data(2).out.bits := vec_c_out.asUInt
   io.data(1).out.bits := io.data(1).in.bits
   io.data(0).out.bits := io.data(0).in.bits
+}
+class Reduction_Dummy(vec: Int, width: Int) extends Module{
+  val io = IO(new Bundle{
+    val in_a = Input(UInt((vec * width).W))
+    val in_b = Input(UInt((vec * width).W))
+    val out = Output(UInt((vec * width).W))
+  })
+  val vec_a = Wire(Vec(vec, UInt(width.W)))
+  val vec_b = Wire(Vec(vec, UInt(width.W)))
+  val vec_c = Wire(Vec(vec, UInt(width.W)))
+  println("width: "+width)
+  for(i <- 0 until vec){
+    vec_a(i):=io.in_a(i*width+width-1, i*width)
+  }
+  for(i <- 0 until vec){
+    vec_b(i):=io.in_b(i*width+width-1, i*width)
+  }
+  for(i <- 0 until vec){
+    vec_c(i):=vec_a(i) + vec_b(i)
+  }
+  //printf("add cell: %d %d %d\n",io.in_a, io.in_b, io.out)
+  io.out := vec_c.asUInt
 }
 class Vivado_Add(vec: Array[Int], width: Int, num_op : Int) extends Module {
     val io = IO(new Bundle {
