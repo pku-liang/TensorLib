@@ -58,7 +58,8 @@ object Gen_dataflow{
     val time_range = (0 until sttrange.length-2).map(i=>{
       valid_time.map(_(i)+1).reduce(_ max _)
     })
-    time_init
+    println("time_range:" + time_range.mkString(" "))
+    time_range.toArray
   }
   def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : SAConfig = {
     val config = new SAConfig(stt)
@@ -66,7 +67,7 @@ object Gen_dataflow{
     val sttrange = opSpec.getSTTRange(stt).toArray
     config.num_op = opSpec.numTensor
     config.pe_size = (sttrange(0), sttrange(1))
-    config.exec_time = sttrange.drop(2)
+    
     config.latency = opSpec.latency
     config.simd = Array.fill(opSpec.numTensor)(1)
     config.width = opSpec.tensorList.map(_.width).toArray
@@ -82,6 +83,7 @@ object Gen_dataflow{
     val time_range_s = this.get_valid_range(opSpec, stt,time_init_s)
     val sttlen = sttrange.length
     config.tensors = Calc_Mem(opSpec, stt).toArray
+    config.exec_time = time_range_ns
     config
 
   }
@@ -90,7 +92,8 @@ object Min_time{
   def check(peid: (Int, Int), t1: Int, invstt: DenseMatrix[Int]) : Boolean = {
     val stt_len = invstt.rows
     val st_iter = Array(peid._1, peid._2, t1) ++ Array.fill(stt_len - 3)(0)
-    val iter =  invstt.t * DenseVector(st_iter)
+    val iter =  invstt * DenseVector(st_iter)
+    println(t1, st_iter, iter)
     iter.toArray.forall(_>=0)
   }
   def apply(peid: (Int, Int), stt: DenseMatrix[Int]): Int = {
@@ -190,7 +193,7 @@ object Calc_Mem{
         }}
         mem_range(last_id._2) = 1
       })
-      //println("time range: "+time_range.mkString(" "))
+      println("time range: "+time_range.mkString(" "))
       //println("mem range_st: "+mem_range.mkString(" "))
       val rm_dims = mem_rvec.map(x=>{
         val a = x.toArray.drop(2)

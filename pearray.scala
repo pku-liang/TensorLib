@@ -51,7 +51,9 @@ class PENetwork(op_id: Int, rvec: Array[Int], io_type: Boolean, pe_num: Int, wid
 class PEArray(params: SAConfig) extends Module{
   val latency = params.latency
   val exec_time = Array(latency) ++ params.exec_time
+  println("exec_time:"+exec_time.mkString(" "))
   val exec_ctrl = Module(new MultiDimTime(params.addr_width, exec_time, Array.fill(exec_time.length)(0))).io
+  printf(p"exec_ctrl: ${exec_ctrl.index}\n")
   val num_op = params.num_op
   val op_type = 0
   val mem_outer_time = for(i <- 0 until num_op) yield{
@@ -119,9 +121,9 @@ class PEArray(params: SAConfig) extends Module{
     val out_valid = Input(Bool())
   })
 
-  exec_ctrl.in := true.B//io.exec_valid
+  exec_ctrl.in := io.exec_valid
   for(i <- 0 until num_op){
-    mem_outer_time(i).in := true.B//io.out_valid
+    mem_outer_time(i).in := io.out_valid
   }
   // link PE with network
   for(i <- 0 until num_op){
@@ -136,16 +138,19 @@ class PEArray(params: SAConfig) extends Module{
   }
   val st_time = for(i <- 0 until pe_h)yield{
     for(j <- 0 until pe_w)yield{
-      val mintime=Min_time((pe_h, pe_w), params.stt)
+      val mintime=Min_time((i, j), params.stt)
       println("mintime="+mintime)
+      mintime
     }
   }
   for(i <- 0 until pe_h){
     for(j <- 0 until pe_w){
+      printf(p"(${pes(i)(j).data(0).out.bits}, ${pes(i)(j).data(1).out.bits}, ${pes(i)(j).data(2).out.bits}) ")
       for(k <- 0 until num_op){
-        pes(i)(j).sig_stat2trans := (exec_ctrl.index(1)===st_time(i)(j).asUInt)
+        pes(i)(j).sig_stat2trans := ShiftRegister(exec_ctrl.index(1)===(st_time(i)(j)+1).asUInt, 1)
       }
     }
+    printf("\n")
   }
   val mem = for(i <- 0 until num_op) yield{
     for(j <- 0 until bank_peid(i).length) yield{
@@ -163,6 +168,7 @@ class PEArray(params: SAConfig) extends Module{
       val init_rd_idx = if(io_type) Array.fill(inner_range.length)(0) else Array.fill(outer_range.length)(0)
       var init_wr_idx = if(!io_type) Array.fill(inner_range.length)(0) else Array.fill(outer_range.length)(0)
       val mem_size = outer_range.reduce(_*_)
+      println("outer_range:"+outer_range.mkString(" ")+", inner_range:"+inner_range.mkString(" "))
       if(io_type) // input
         Module(new MemController(mem_size, params.width(i), params.simd(i), params.addr_width, outer_dim, inner_dim, outer_range, inner_range, init_wr_idx, init_rd_idx)).io
       else  // output
@@ -176,11 +182,26 @@ class PEArray(params: SAConfig) extends Module{
   for(i <- 0 until num_op){
     for(j <- 0 until bank_peid(i).length){
       mem(i)(j).wr_update := false.B 
+      val (pey, pex) = params.tensors(i).top_pes(j)
       if(params.io_type(i)){
-        if(dataflows(i)!=StationaryDataflow)
-          mem(i)(j).rd_valid := io.exec_valid
+        if(dataflows(i)!=StationaryDataflow){
+          val delay_time = st_time(pey)(pex)*latency
+          if(delay_time>0){
+            
+            val shiftreg = RegInit(VecInit(Seq.fill(delay_time)(false.B)))
+            for(i <- 1 until delay_time)
+            shiftreg(i) := shiftreg(i-1)
+            shiftreg(0) := io.exec_valid
+            mem(i)(j).rd_valid := shiftreg(delay_time-1)
+          }else{
+            mem(i)(j).rd_valid := io.exec_valid
+          }
+          //mem(i)(j).rd_valid := ShiftRegister(io.exec_valid, st_time(pey)(pex)*latency, false.B)
+          println("st_time_: "+i+","+j+","+pey+","+pex+", "+st_time(pey)(pex)*latency)
+        }
+          
         else
-          mem(i)(j).rd_valid := io.exec_valid && exec_ctrl.index(1) < (st_time(i)(j) + pe_w).asUInt
+          mem(i)(j).rd_valid := io.exec_valid && exec_ctrl.index(1) < (st_time(pey)(pex) + pe_w).asUInt
         mem(i)(j).wr_valid := io.data(i).in.get(j).valid
         mem(i)(j).wr_data := io.data(i).in.get(j).bits
         pe_net(i)(j).to_mem := mem(i)(j).rd_data
@@ -193,13 +214,4 @@ class PEArray(params: SAConfig) extends Module{
     }
   }
 
-  // for(i <- 0 until num_op){
-  //   for(j <- 0 until bank_peid(i).length){
-  //     if(params.io_type(i)){
-  //       pe_net(i)(j).to_mem := io.data(i).in.get(j).bits
-  //     }else{
-  //       io.data(i).out.get(j) := pe_net(i)(j).to_mem
-  //     }
-  //   }
-  // }
 }

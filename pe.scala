@@ -25,8 +25,8 @@ class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io
     })
     val sig_stat2trans = Input(Bool())
   })
-  printf(p"data0=${io.data(0).in.bits},data1=${io.data(1).in.bits},data2=${io.data(2).in.bits},sig=${io.sig_stat2trans}\n")
-  printf(p"${io}\n")
+  //printf(p"data0=${io.data(0).in.bits},data1=${io.data(1).in.bits},data2=${io.data(2).in.bits},sig=${io.sig_stat2trans}\n")
+  //printf(p"${io}\n")
   def im_factory(dataflow: TensorDataflow, io_type: Boolean, width: Int, latency: Int):InternalModule={
     dataflow match {
       case DirectDataflow => if(io_type) new DirectInput(width) else new DirectOutput(width)

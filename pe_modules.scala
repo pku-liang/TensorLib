@@ -163,6 +163,7 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
 
 
 class StationaryOutput(width: Int, latency: Int) extends InternalModule(width, true, true){
+  //printf(p"O:${io}\n")
   //val trans = SyncReadMem(latency, UInt(width.W))
   val trans = Module(new Queue(UInt(width.W), latency)).io
   val move = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
@@ -178,14 +179,6 @@ class StationaryOutput(width: Int, latency: Int) extends InternalModule(width, t
   when(!trans.enq.ready){
     trans_move_fin := true.B
   }
-  // current trans to move
-  //val trans_read = trans.read(trans_out_addr)
-  // when(io.port.out_ready.get && trans_out_valid){
-  //   trans_out_addr := Mux(trans_out_addr===(latency-1).asUInt, 0.U, trans_out_addr + 1.U)
-  //   when(trans_out_addr===(latency-1).asUInt){
-  //     trans_out_valid := false.B
-  //   }
-  // }
   when(!io.port.in.valid){
     move.bits := trans.deq.bits
     move.valid := trans.deq.valid
@@ -198,7 +191,6 @@ class StationaryOutput(width: Int, latency: Int) extends InternalModule(width, t
   io.to_cell.valid := true.B
   
   io.to_cell.bits := Mux(reg_stat2trans, 0.U, io.from_cell.get.bits)
-  //ffffffffffffffffffffffffffffffffffffffffffffffffffprintf("trans_read: %d, io.port.out_ready.get: %d,trans_out_valid: %d, move: %d %d, pe network out:%d %d\n", trans_read, io.port.out_ready.get,trans_out_valid, move.valid, move.bits, io.port.out.valid,io.port.out.bits)
 }
 
 class StationaryOutput_OutCell(width: Int, latency: Int) extends InternalModule(width, true, true){

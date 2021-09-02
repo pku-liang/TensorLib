@@ -60,26 +60,18 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
     val in = Input(Bool())
     
 
-    // out=0, back to 0
-    // out=1, add 1
-    // out=2, keep
     val out = Output(Vec(len, UInt(2.W)))
-    val index = Output(Vec(len, UInt(addr_width.W)))
+    val index = Output(Vec(len, UInt((addr_width+2).W)))
   })
   //val scale_dim = (0 until len).map(i=>{dim.slice(0, i+1).reduce(_*_)})
   val regs = for(i <- 0 until len)yield{
     RegInit(init(i).asUInt(addr_width.W))
   }
   val back = (0 until len).map(i=>regs(i)+io.in===dim(i).asUInt)
-  // val back = (0 until len).map(i=>{
-  //   next.slice(0,i+1).reduce(_ && _)
-  // })
-  //regs(0):= Mux(next(0)===dim(0), 0.U, next(0))
-  //printf("reg: %d %d %d, back:%d %d %d, out: %d %d %d\n",regs(0), regs(1), regs(2), back(0),back(1), back(2), io.out(0), io.out(1), io.out(2))
+
   for(i <- 1 until len){
     io.index(i) := regs(i)
-      //io.out(i):= (!back(i))    // 1: +1, 0: back to 0
-    //io.out(i) := ((!back(i-1)) << 1) | (!back(i))  // 1: keep
+
     val back_pre = back.slice(0, i).reduce(_ && _)
     io.out(i) := ((!back_pre) << 1) | (!back(i))
     when(back_pre){
@@ -89,13 +81,6 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
         regs(i) := regs(i)+io.in
       }
     }
-      // when(back(i-1)){    //
-        // when(back(i)){
-        //   regs(i) := 0.U
-        // }.otherwise{
-        //   regs(i) := regs(i)+io.in
-        // }
-      // }
   }
   io.index(0) := regs(0)
   when(back(0)){
@@ -105,11 +90,6 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
     regs(0) := regs(0)+io.in
     io.out(0) := io.in
   }
-  // io.out(1):=out_reg(1)
-  // io.out(2):=out_reg(2)
-  // for(i <- 0 until len){
-  //   io.out(i) := out_reg(i)
-  // }
 }
 class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_init: Array[Int], rd_init: Array[Int], size: Int, dw: Int, vec: Int) extends Module{
   val len_wr = wr_dim.length
@@ -122,11 +102,6 @@ class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_in
     val wr_data = Input(Valid(UInt(all_width.W)))
     val wr_update = Input(Bool())
   })
-  println("wr_dim:"+wr_dim.mkString(" "))
-  println("wr_init:"+wr_init.mkString(" "))
-  
-  println("rd_dim:"+rd_dim.mkString(" "))
-  println("rd_init:"+rd_init.mkString(" "))
   val mem = SyncReadMem(size, UInt((all_width+1).W))
   val rd_addr_reg = RegInit({
     val b = Wire(Input(Valid(new HeterogeneousBag(
@@ -212,14 +187,7 @@ class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_in
   
   
   
-  printf("rd_addr: %d, rd_data: %d %d\n",final_rd_addr, io.rd_data.valid, io.rd_data.bits)
-  
-  //printf("wr_data2: %d, wr_addr:%d %d, wr_data: %d, rd_addr:%d, rd_data: %d %d\n",wr_data_2.bits, wr_addr_3, wr_valid_3, wr_data_final, final_rd_addr, io.rd_data.bits, io.rd_data.valid)
+  //printf("rd_addr: %d, rd_data: %d %d\n",final_rd_addr, io.rd_data.valid, io.rd_data.bits)
+  //printf("wr_addr: %d, wr_addr: %d %d\n",wr_addr_3, wr_data_final, wr_valid_3)
 
-  // printf("memory:\n")
-  // for(i<- 0 until 50){
-  //   printf("%d ",mem.read(i.asUInt))
-  //   if(i%10==9)
-  //     printf("\n")
-  // }
 }
