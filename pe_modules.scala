@@ -104,9 +104,10 @@ class DirectOutput(width: Int) extends InternalModule(width, false, true){
 }
 class SystolicOutput(width: Int) extends InternalModule(width, false, true){
 
-  val reg = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
-  reg <> io.port.in
-  io.to_cell <> reg
+  //val reg = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
+  //reg <> io.port.in
+  //io.to_cell <> reg
+  io.to_cell <>io.port.in
   io.port.out <> io.from_cell.get
   //printf("to pe:%d %d,from pe:%d %d\n",io.to_cell.valid, io.to_cell.bits, io.from_cell.get.valid, io.from_cell.get.bits)
 }
@@ -123,12 +124,14 @@ stat表示用于PE计算的寄存器，trans表示用来传输的寄存器。当
 
 
 class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(width, true, false){
+  //printf(p"SI:${io}\n")
   val trans = RegInit(0.U.asTypeOf(Valid(UInt(width.W))))
   
 
   val update = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
   //val stat_C = Module(new RegIO(m*n,width))
   val stat = RegInit(0.U.asTypeOf(Valid(Vec(latency, UInt(width.W)))))
+  
   val reg_stat2trans = RegInit(0.U.asTypeOf(Vec(latency+1, Bool())))
   //false.B)
   val write_trans_pos = RegInit(0.U(4.W))
@@ -158,6 +161,8 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   }
   io.to_cell.valid := RegNext(stat.valid, false.B)
   io.to_cell.bits := RegNext(stat.bits(read_stat_pos), false.B)
+
+  printf(p"sig:${reg_stat2trans(0)}, update:${update}, stat:${stat}\n")
 }
 
 

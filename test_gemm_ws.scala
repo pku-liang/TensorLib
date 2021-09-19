@@ -41,7 +41,7 @@ class TestTop_GemmWS extends Module{
     (2,4,1,2),
     (4,4,3,3),
     (2,2,2,2)
-  )
+  ).t
   val mat2 = DenseMatrix(
     (1,1,4,2),
     (2,4,1,2),
@@ -52,8 +52,8 @@ class TestTop_GemmWS extends Module{
     (1,1,3,4),
     (3,2,1,4)
   )
-  val mat3 =  mat1 * mat2.t
-  val mat1_reg = VecInit.tabulate(32)(i=>{
+  val mat3 =  mat1.t * mat2.t
+  val mat1_reg = VecInit.tabulate(16)(i=>{
     val ix = i % 4
     val iy = i / 4
     mat1(iy,ix).asUInt
@@ -61,7 +61,7 @@ class TestTop_GemmWS extends Module{
   val mat2_reg = VecInit.tabulate(32)(i=>{
     val ix = i % 4
     val iy = i / 4
-    mat1(iy,ix).asUInt
+    mat2(iy,ix).asUInt
   })
   println(mat3)
   for(i <- 0 until 4){

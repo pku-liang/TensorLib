@@ -46,7 +46,15 @@ class PENetwork(op_id: Int, rvec: Array[Int], io_type: Boolean, pe_num: Int, wid
     }
   }
 }
-
+object MShiftReg{
+  def apply[T <: Data](len: Int, data: T) : T = {
+    val shiftreg = RegInit(VecInit(Seq.fill(len)(0.U.asTypeOf(data))))
+    shiftreg(0) := data
+    for(i <- 1 until len)
+      shiftreg(i) := shiftreg(i-1)
+    shiftreg(len-1)
+  }
+}
 
 class PEArray(params: SAConfig) extends Module{
   val latency = params.latency
@@ -90,7 +98,8 @@ class PEArray(params: SAConfig) extends Module{
     val rvec = params.tensors(i).rvecs(0)
     val dirx = if(dataflows(i)==StationaryDataflow) 1 else rvec(1)
     val diry = if(dataflows(i)==StationaryDataflow) 0 else rvec(0)
-    println(i, diry, dirx)
+    println("direction:"+i+","+diry+","+dirx)
+    println("top_pes:"+params.tensors(i).top_pes.mkString(" "))
     for(t <- 0 until params.tensors(i).top_pes.length){
       val (j, k) = params.tensors(i).top_pes(t)
       bank_peid(i)(t) += ((j, k))
@@ -147,7 +156,11 @@ class PEArray(params: SAConfig) extends Module{
     for(j <- 0 until pe_w){
       printf(p"(${pes(i)(j).data(0).out.bits}, ${pes(i)(j).data(1).out.bits}, ${pes(i)(j).data(2).out.bits}) ")
       for(k <- 0 until num_op){
-        pes(i)(j).sig_stat2trans := ShiftRegister(exec_ctrl.index(1)===(st_time(i)(j)+1).asUInt, 1)
+        if(dataflows(k)==StationaryDataflow && (!params.io_type(k)))
+          pes(i)(j).sig_stat2trans := ShiftRegister(io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)+1).asUInt && (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2)).forall(_===0.U)),3,false.B)
+        else
+          pes(i)(j).sig_stat2trans := ShiftRegister(io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)).asUInt && exec_ctrl.index(0) === 0.U&& (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2)).forall(_===0.U)), 3)
+          //pes(i)(j).sig_stat2trans := io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)).asUInt && exec_ctrl.index(0) === 0.U
       }
     }
     printf("\n")
@@ -180,18 +193,23 @@ class PEArray(params: SAConfig) extends Module{
 
 
   for(i <- 0 until num_op){
+    val max_delay = params.tensors(i).top_pes.map(x=>{
+      st_time(x._1)(x._2)
+    }).reduce(_ max _)*latency
+    val shiftreg = RegInit(VecInit(Seq.fill(max_delay)(false.B)))
+    for(i <- 1 until max_delay)
+      shiftreg(i) := shiftreg(i-1)
+    shiftreg(0) := io.exec_valid
     for(j <- 0 until bank_peid(i).length){
       mem(i)(j).wr_update := false.B 
       val (pey, pex) = params.tensors(i).top_pes(j)
-      if(params.io_type(i)){
-        if(dataflows(i)!=StationaryDataflow){
+      if(params.io_type(i)){      // input
+        if(dataflows(i)!=StationaryDataflow){   // systolic input
           val delay_time = st_time(pey)(pex)*latency
           if(delay_time>0){
             
-            val shiftreg = RegInit(VecInit(Seq.fill(delay_time)(false.B)))
-            for(i <- 1 until delay_time)
-            shiftreg(i) := shiftreg(i-1)
-            shiftreg(0) := io.exec_valid
+            //val shiftreg = RegInit(VecInit(Seq.fill(delay_time)(false.B)))
+            
             mem(i)(j).rd_valid := shiftreg(delay_time-1)
           }else{
             mem(i)(j).rd_valid := io.exec_valid
@@ -200,8 +218,8 @@ class PEArray(params: SAConfig) extends Module{
           println("st_time_: "+i+","+j+","+pey+","+pex+", "+st_time(pey)(pex)*latency)
         }
           
-        else
-          mem(i)(j).rd_valid := io.exec_valid && exec_ctrl.index(1) < (st_time(pey)(pex) + pe_w).asUInt
+        else    // STATIONARY INPUT 
+          mem(i)(j).rd_valid :=  MShiftReg(3,io.exec_valid && exec_ctrl.index(1) >= (st_time(pey)(pex)).asUInt && exec_ctrl.index(1) < (pe_w+st_time(pey)(pex)).asUInt)
         mem(i)(j).wr_valid := io.data(i).in.get(j).valid
         mem(i)(j).wr_data := io.data(i).in.get(j).bits
         pe_net(i)(j).to_mem := mem(i)(j).rd_data

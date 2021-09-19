@@ -68,7 +68,8 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
     RegInit(init(i).asUInt(addr_width.W))
   }
   val back = (0 until len).map(i=>regs(i)+io.in===dim(i).asUInt)
-
+  if(len>2)
+    printf("io.in: %d, regs:%d %d %d\n",io.in, regs(0),regs(1), regs(2))
   for(i <- 1 until len){
     io.index(i) := regs(i)
 
@@ -187,7 +188,7 @@ class MultiDimMem(addr_width: Int, wr_dim: Array[Int], rd_dim: Array[Int], wr_in
   
   
   
-  //printf("rd_addr: %d, rd_data: %d %d\n",final_rd_addr, io.rd_data.valid, io.rd_data.bits)
+  printf("io.rd_addr: %d %d, rd_addr: %d, rd_data: %d %d\n",io.rd_addr.bits(0), io.rd_addr.bits(1), final_rd_addr, io.rd_data.valid, io.rd_data.bits)
   //printf("wr_addr: %d, wr_addr: %d %d\n",wr_addr_3, wr_data_final, wr_valid_3)
 
 }
