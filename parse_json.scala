@@ -4,7 +4,7 @@ import dijon._
 import breeze.linalg._
 
 object ParseJson extends App{
-  def apply(file_name: String){
+  def run(file_name: String){
     val lines = scala.io.Source.fromFile(file_name).mkString
     val param = parse(lines)
     val op_type = param.benchmark
@@ -45,5 +45,15 @@ object ParseJson extends App{
       i.setWidth(16)
     }
   }
-  apply("gemm.json")
+    
+    println("Scala Command Line Argument Example");
+      
+    // You pass any thing at runtime
+    // that will be print on the console
+    for(arg<-args)
+    {
+        println(arg);
+    }
+    run(args(0))
+  
 }
