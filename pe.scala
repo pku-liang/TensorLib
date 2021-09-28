@@ -34,26 +34,17 @@ class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io
       case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput(width, latency)
     }
   }
-  //val exec_cycle = RegInit(0.U(20.W))
-
   val pe = Module(new ComputeCell_Latency(vec, width(0), latency)).io
   val ims = for(i <- 0 until num_op) yield{
     Module(im_factory(dataflow(i), io_type(i), vec(i) * width(i), latency)).io
   }
-  //val exec = VecInit(ims.map(it=>it.to_pe.valid)).reduce(_ && _)
-  //exec_cycle := Mux(exec_cycle + exec === io.stage_cycle, 0.U, exec_cycle + exec)
   for(i <- 0 until num_op){
     ims(i).port <> io.data(i)
     pe.data(i).in := ims(i).to_cell.bits
     if(!io_type(i)){
       ims(i).from_cell.get.bits := pe.data(i).out
       ims(i).from_cell.get.valid := ShiftRegister(ims(i).to_cell.valid, latency)
-      //ims(i).from_cell.get.valid := VecInit(ims.map(it=>it.to_pe.valid)).reduce(_ && _)
-      //printf("pe out:%d %d\n", ims(i).from_cell.get.bits, ims(i).from_cell.get.valid)
-    }else{
-      //printf("pe in:%d %d\n", io.data(i).in.bits, io.data(i).in.valid)
     }
-    //VecInit(x.map(it=>pes(it._1)(it._2).data(i).out.valid)).reduce(_ && _)
       
     if(dataflow(i)==StationaryDataflow){
       ims(i).sig_stat2trans.get := io.sig_stat2trans

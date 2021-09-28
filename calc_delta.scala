@@ -58,7 +58,7 @@ object Gen_dataflow{
     val time_range = (0 until sttrange.length-2).map(i=>{
       valid_time.map(_(i)+1).reduce(_ max _)
     })
-    println("time_range:" + time_range.mkString(" "))
+    //println("time_range:" + time_range.mkString(" "))
     time_range.toArray
   }
   def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : SAConfig = {
@@ -193,7 +193,7 @@ object Calc_Mem{
         }}
         mem_range(last_id._2) = 1
       })
-      println("time range: "+time_range.mkString(" "))
+      //println("time range: "+time_range.mkString(" "))
       //println("mem range_st: "+mem_range.mkString(" "))
       val rm_dims = mem_rvec.map(x=>{
         val a = x.toArray.drop(2)
@@ -214,21 +214,14 @@ object Calc_Mem{
       val mem_range_scale = (0 until time_range.length).map(x=>{
         (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
       })
-      //println("access mat:" + access_mat)
-      //println("mem_range_scale:"+mem_range_scale.mkString(" "))
       var mem_dims = (access_mat.t * DenseVector(mem_range_scale.toArray)).toArray
-      //println("mem dims: "+mem_dims.mkString(" "))
-
-      //println("mem_range"+mem_range.mkString(" ")+","+ top_pes.length)
-      //bank_size.foreach(x=>println(x.mkString(" ")))
-      //bank_size.reduce(_*_) * top_pes.length
-      //(time_range, mem_dims, mem_range.reduce(_*_)*top_pes.length)
       var dataflow = new TensorConfig()
       dataflow.time_range = time_range.toArray
       dataflow.mem_range = mem_range
       dataflow.rvecs = rvecs.toArray
       dataflow.top_pes = top_pes.toArray
       dataflow.mem_dims = mem_dims
+      dataflow.ainvt = ainvt
       dataflow
     })
     //val bank_mult = config.map(y=>y.reduce(_*_))

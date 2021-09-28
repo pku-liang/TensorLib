@@ -8,22 +8,122 @@ import chisel3.iotesters.{PeekPokeTester, Driver}
 import java.io.PrintWriter
 import breeze.linalg._
 
-class TestTop_Gemm extends Module{
-  val io =IO(new Bundle{
 
-  })
-  val counter = RegInit(0.U(10.W))
-  counter := counter + 1.U
-  printf("cycle: %d\n", counter)
+class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: Int) extends PeekPokeTester(c){
+  val r = new scala.util.Random
+  val mat1 = DenseMatrix.tabulate[Int](k_len, c_len){
+    case(i, j)=> r.nextInt(10)+1
+  }
+  val mat2 = DenseMatrix.tabulate[Int](x_len, c_len){
+    case(i, j)=> r.nextInt(10)+1
+  }
+  
+  
+  val mat_ref = mat1 * mat2.t
+  var mat_out = DenseMatrix.tabulate[Int](k_len, x_len){
+    case(i, j) => 0
+  }
+  println("mat 1:")
+  println(mat1.toString)
+  println("mat 2:")
+  println(mat2.toString)
+  println("mat 3:")
+  println(mat_ref.toString)
+  for(i <- 0 until c_len){
+    for(j <- 0 until k_len){
+      poke(c.io.data(1).in.get(j).valid, true.B)
+      poke(c.io.data(1).in.get(j).bits.valid, true.B)
+      poke(c.io.data(1).in.get(j).bits.bits, mat1(j,i))
+    }
+    for(j <- 0 until x_len){
+      poke(c.io.data(2).in.get(j).valid, true.B)
+      poke(c.io.data(2).in.get(j).bits.valid, true.B)
+      poke(c.io.data(2).in.get(j).bits.bits, mat2(j,i))
+    }
+    poke(c.io.exec_valid, false.B)
+    poke(c.io.out_valid, false.B)
+    step(1)
+  }
+  for(i <- 0 until c_len+k_len+x_len){
+    for(j <- 0 until k_len){
+      poke(c.io.data(1).in.get(j).valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.bits, 0)
+    }
+    for(j <- 0 until x_len){
+      poke(c.io.data(2).in.get(j).valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.bits, 0)
+    }
+    poke(c.io.exec_valid, true.B)
+    poke(c.io.out_valid, false.B)
+    step(1)
+  }
+
+  for(i <- 0 until k_len*3){
+    for(j <- 0 until k_len){
+      poke(c.io.data(1).in.get(j).valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.bits, 0)
+    }
+    for(j <- 0 until x_len){
+      poke(c.io.data(2).in.get(j).valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.bits, 0)
+    }
+    println()
+    poke(c.io.exec_valid, false.B)
+    poke(c.io.out_valid, false.B)
+    step(1)
+  }
+  var out_col = 0
+  while(out_col < k_len * x_len){
+    
+    for(j <- 0 until k_len){
+      poke(c.io.data(1).in.get(j).valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.valid, false.B)
+      poke(c.io.data(1).in.get(j).bits.bits, 0)
+    }
+    for(j <- 0 until x_len){
+      poke(c.io.data(2).in.get(j).valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.valid, false.B)
+      poke(c.io.data(2).in.get(j).bits.bits, 0)
+    }
+    for(j <- 0 until x_len){
+      if(peek(c.io.data(0).out.get(j).valid).toInt==1){
+        mat_out(j, out_col/x_len) = peek(c.io.data(0).out.get(j).bits).toInt
+        out_col = out_col + 1
+      }
+      print(peek(c.io.data(0).out.get(j).bits)+" ")
+    }
+    println()
+    poke(c.io.exec_valid, false.B)
+    poke(c.io.out_valid, true.B)
+    step(1)
+  }
+  println(mat_ref.toString)
+  println(mat_out.toString)
+  if(mat_ref == mat_out){
+    println("result match")
+  }else{
+    println("failed")
+  }
+}
+object Test_Gemm extends App{
+  
+  val k_len = 4
+  val c_len = 10
+  val x_len = 4
+  
   val opSpec = new OperatorSpec {
     val k :: c :: x :: Nil = genIterators(3)
     val o :: w :: i :: Nil = genTensor(3)
 
     setExpr(o(k)(x) += w(k)(c) * i(c)(x))
-    k.setRange(4)
-    c.setRange(8)
-    x.setRange(4)
-    setLatency(4)
+    k.setRange(k_len)
+    c.setRange(c_len)
+    x.setRange(x_len)
+    setLatency(1)
     o.setWidth(16)
     w.setWidth(16)
     i.setWidth(16)
@@ -34,61 +134,7 @@ class TestTop_Gemm extends Module{
    (1,  1,  1),  
   )
   val config = Gen_dataflow(opSpec, stt)
-  val top = Module(new PEArray(config)).io
-  //val top = Module(gen_dataflow(opSpec, stt)).io
-  val mat1 = DenseMatrix(
-    (1,1,4,2),
-    (2,4,1,2),
-    (4,4,3,3),
-    (2,2,2,2),
-    (1,2,4,4),
-    (2,1,3,3),
-    (1,1,3,4),
-    (3,2,1,4)
-  )
-  val mat2 = DenseMatrix(
-    (1,1,4,2),
-    (2,4,1,2),
-    (4,4,3,3),
-    (2,2,2,2),
-    (1,2,4,4),
-    (2,1,3,3),
-    (1,1,3,4),
-    (3,2,1,4)
-  )
-  val mat3 = mat1.t * mat2
-  val mat1_reg = VecInit.tabulate(32)(i=>{
-    val ix = i % 4
-    val iy = i / 4
-    mat1(iy,ix).asUInt
-  })
-  val mat2_reg = VecInit.tabulate(32)(i=>{
-    val ix = i % 4
-    val iy = i / 4
-    mat1(iy,ix).asUInt
-  })
-  println(mat3)
-  for(i <- 0 until 4){
-    top.data(1).in.get(i).valid := (counter < 32.U)
-    top.data(1).in.get(i).bits.valid := (counter < 32.U)
-    top.data(1).in.get(i).bits.bits := mat1_reg((counter/4.U)*4.U+i.asUInt)
-  }
-
-  for(i <- 0 until 4){
-    top.data(2).in.get(i).valid := (counter < 32.U)
-    top.data(2).in.get(i).bits.valid := (counter < 32.U)
-    top.data(2).in.get(i).bits.bits := mat1_reg((counter/4.U)*4.U+i.asUInt)
-  }
-  
-  top.exec_valid := (counter >= 10.U)
-  top.out_valid := false.B
-}
-class Test_Runner_Gemm(c: TestTop_Gemm) extends PeekPokeTester(c){
-  for(i <- 0 until 100){
-    step(1)
-  }
-}
-object Test_Gemm extends App{
+  //val top = Module(new PEArray(config)).io
   //chisel3.Driver.execute(args, () => new TestTop())
-  Driver(() => new TestTop_Gemm())(c => new Test_Runner_Gemm(c))
+  Driver(() => new PEArray(config))(c => new Test_Runner_Gemm(c, k_len, c_len, x_len, 1))
 }

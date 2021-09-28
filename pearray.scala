@@ -81,6 +81,19 @@ class PEArray(params: SAConfig) extends Module{
       DirectDataflow
     }
   }
+  var related_col_id = 0
+  for(k <- 0 until num_op){
+    if(dataflows(k)==StationaryDataflow)
+      for(i <- 2 until params.tensors(k).ainvt.cols){
+        println(params.tensors(k).ainvt(::, i).toArray.mkString(" "))
+        val c = params.tensors(k).ainvt(::, i).toArray.forall(_==0)
+        // if c, not related
+        if((!c) && related_col_id==0){
+          related_col_id = i
+        }
+      }
+  }
+  println("related col id:"+related_col_id)
   val pe_h = params.pe_size._1
   val pe_w = params.pe_size._2
   val pes = for(i <- 0 until pe_h) yield{
@@ -148,19 +161,24 @@ class PEArray(params: SAConfig) extends Module{
   val st_time = for(i <- 0 until pe_h)yield{
     for(j <- 0 until pe_w)yield{
       val mintime=Min_time((i, j), params.stt)
-      println("mintime="+mintime)
+      println("st_time="+mintime)
       mintime
     }
   }
   for(i <- 0 until pe_h){
     for(j <- 0 until pe_w){
-      printf(p"(${pes(i)(j).data(0).out.bits}, ${pes(i)(j).data(1).out.bits}, ${pes(i)(j).data(2).out.bits}) ")
+      printf(p"(${pes(i)(j).data(0).out.bits}, ${pes(i)(j).data(1).out.bits}, ${pes(i)(j).data(2).out.bits}, ${pes(i)(j).sig_stat2trans}) ")
       for(k <- 0 until num_op){
-        if(dataflows(k)==StationaryDataflow && (!params.io_type(k)))
-          pes(i)(j).sig_stat2trans := ShiftRegister(io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)+1).asUInt && (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2)).forall(_===0.U)),3,false.B)
-        else
-          pes(i)(j).sig_stat2trans := ShiftRegister(io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)).asUInt && exec_ctrl.index(0) === 0.U&& (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2)).forall(_===0.U)), 3)
-          //pes(i)(j).sig_stat2trans := io.exec_valid && exec_ctrl.index(1)===(st_time(i)(j)).asUInt && exec_ctrl.index(0) === 0.U
+        if(dataflows(k)==StationaryDataflow){
+          //println(s"k=${k}, type=${params.io_type(k)}")
+          if((!params.io_type(k))){
+            // output stationary
+            pes(i)(j).sig_stat2trans := MShiftReg(4,  exec_ctrl.index(1)===(st_time(i)(j)+1).asUInt && (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2).slice(0, related_col_id-3)).forall(_===0.U)))
+          }
+          else
+            // input stationary
+            pes(i)(j).sig_stat2trans := MShiftReg(4,  exec_ctrl.index(1)===(st_time(i)(j)).asUInt && exec_ctrl.index(0) === 0.U&& (if (exec_ctrl.index.length<=2) true.B else VecInit(exec_ctrl.index.drop(2).slice(0, related_col_id-3)).forall(_===0.U)))
+        }
       }
     }
     printf("\n")
@@ -168,10 +186,6 @@ class PEArray(params: SAConfig) extends Module{
   val mem = for(i <- 0 until num_op) yield{
     for(j <- 0 until bank_peid(i).length) yield{
       val io_type = params.io_type(i)
-      //println("mem:"+i+","+j)
-      // cycle 0 read address?
-      // val init_st = DenseVector[Int](Array(bank_peid(i)(j)(0)._1, bank_peid(i)(j)(0)._2, 0))
-      // val init_rd_idx = (inv(stt).mapValues(_.toInt) * init_st)
       val inner_range = Array(latency)++params.tensors(i).time_range
       val outer_range = Array(latency)++params.tensors(i).mem_range
       val outer_dim = (0 until outer_range.length).map(x=>{

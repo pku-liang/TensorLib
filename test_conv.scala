@@ -22,7 +22,7 @@ class TestTop_Conv extends Module{
 
     setExpr(o(k)(y)(x) += w(k)(c)(r)(s) * i(c)(y + r)(x + s))
     k.setRange(4)
-    c.setRange(4)
+    c.setRange(10)
     y.setRange(6)
     x.setRange(4)
     r.setRange(3)
@@ -32,6 +32,7 @@ class TestTop_Conv extends Module{
     w.setWidth(16)
     i.setWidth(16)
   }
+  // CONV, OS dataflow, time = c, r, s, y
   val stt = DenseMatrix(
     (1,0,0,0,0,0), 
     (0,0,0,1,0,0), 
@@ -75,7 +76,7 @@ class TestTop_Conv extends Module{
   top.out_valid := false.B
 }
 class Test_Runner_Conv(c: TestTop_Conv) extends PeekPokeTester(c){
-  for(i <- 0 until 100){
+  for(i <- 0 until 300){
     step(1)
   }
 }

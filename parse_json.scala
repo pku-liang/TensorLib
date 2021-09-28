@@ -3,7 +3,7 @@ import scala.language.dynamics._
 import dijon._
 import breeze.linalg._
 
-object ParseJson extends App{
+object CodeGen extends App{
   def run(file_name: String){
     val lines = scala.io.Source.fromFile(file_name).mkString
     val param = parse(lines)
