@@ -108,7 +108,7 @@ class ComputeCell_Latency(vec: Array[Int], width: Int, latency: Int) extends Mod
       }
     }) 
   })
-  printf(p"${io.data}\n")
+  //printf(p"${io.data}\n")
   val vec_a = Wire(Vec(vec(1), UInt(width.W)))
   val vec_b = Wire(Vec(vec(2), UInt(width.W)))
   val vec_c_in = Wire(Vec(vec(0), UInt(width.W)))

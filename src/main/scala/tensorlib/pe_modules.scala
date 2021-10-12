@@ -162,7 +162,7 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   io.to_cell.valid := RegNext(stat.valid, false.B)
   io.to_cell.bits := RegNext(stat.bits(read_stat_pos), false.B)
 
-  printf(p"sig:${reg_stat2trans(0)}, update:${update}, stat:${stat}\n")
+  //printf(p"sig:${reg_stat2trans(0)}, update:${update}, stat:${stat}\n")
 }
 
 
