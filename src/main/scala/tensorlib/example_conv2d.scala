@@ -44,37 +44,3 @@ object Example_GenConv2D extends App {
   chisel3.Driver.execute(args, () => new PEArray(config))
 }
 
-object Gen_GEMM_Dataflows extends App {
-  //  Conv2D calculation algorithm
-  // definition
-  val opSpec = new OperatorSpec {
-    val k :: c :: x :: Nil = genIterators(3)
-    val o :: w :: i :: Nil = genTensor(3)
-
-    setExpr(o(k)(x) += w(k)(c) * i(c)(x))
-    k.setRange(4)
-    c.setRange(4)
-    x.setRange(20)
-    setLatency(1)
-    o.setWidth(16)
-    w.setWidth(16)
-    i.setWidth(16)
-  }
-  var mat = DenseMatrix((0,1,0),(1,0,0),(1,1,1))
-  var num_df = 0
-  for(m <- 0 until 512){
-    var g = m
-    for(i <- 0 until 3){
-      for(j <- 0 until 3){
-        mat(i,j)=g%2
-        g =g/2
-      }
-    }
-    if(TestMat(mat)){
-      val config = Gen_dataflow(opSpec, mat)
-      val str = chisel3.Driver.emitVerilog(new PEArray(config))
-      new PrintWriter(s"PEArray_$num_df.v") { write(str); close }
-      num_df = num_df + 1
-    }
-  }
-}
