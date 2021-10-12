@@ -176,7 +176,7 @@ class ComputeCell_Int(vec: Array[Int], width: Array[Int]) extends Module{
   // mult
   val mul = for(i <- 0 until vec(0))yield{
     for(j <- 0 until vec(1))yield{
-      Module(new Mulpilter(width(0), if(width==8)0 else 1)).io
+      Module(new Mulpilter(width(0), if(width(0)==8)0 else 1)).io
     }
   }
   val reg_c3 = RegNext(reg_c2, 0.U.asTypeOf(chiselTypeOf(vec_c_in)))
