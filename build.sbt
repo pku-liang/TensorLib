@@ -65,3 +65,6 @@ libraryDependencies  ++= Seq(
   // It depends on LGPL code
   "org.scalanlp" %% "breeze-viz" % "1.1"
 )
+
+
+libraryDependencies += "me.vican.jorge" % "dijon_2.12" % "0.5.0+18-46bbb74d"
