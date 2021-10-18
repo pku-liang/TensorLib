@@ -61,10 +61,15 @@ val stt = DenseMatrix(
   )
 ```
 ### Generate Verilog
-Simply call ```gen_dataflow(opSpec, stt)``` to generate the verilog code for the accelerator specified by the particular operation and dataflow.
+```scala
+  val config = Gen_dataflow(opSpec, stt)
+  chisel3.Driver.execute(args, () => new PEArray(config))
+```
+Call ```Gen_dataflow(opSpec, stt)``` to generate the dataflow configuration, and Chisel driver to generate the verilog code for the accelerator specified by the particular operation and dataflow.
 
 ## Example
-See ```interface_test.scala``` for an 2D convolution example.
+See ```example_gemm.scala``` for a GEMM example.
+See ```example_conv2d.scala``` for an 2D convolution example.
 
 ## Paper
 Please cite our DAC 2021 paper if our work is used in your research.
