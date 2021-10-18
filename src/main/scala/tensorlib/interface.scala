@@ -233,7 +233,7 @@ class OperatorSpec {
   def setLatency(l: Int) : Unit = {
     latency = l
   }
-  def customKernel(x: Boolean): Unit = {
+  def useCustomKernel(x: Boolean): Unit = {
     opType = if(x) 1 else 0
   }
   // def getTimeRange(stt: DenseMatrix[Int], id:(Int, Int)) : DenseVector[Int] = {
