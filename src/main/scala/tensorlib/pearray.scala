@@ -103,7 +103,7 @@ class PEArray(params: SAConfig) extends Module{
       Module(new PE(params.simd, params.width, dataflows.toArray, params.io_type, num_op, latency, op_type)).io
     }
   }
-  println(s"\t PE size = $pe_h x $pe_w")
+  println(s"\tPE size = $pe_h x $pe_w")
   val bank_peid = for(i <- 0 until num_op)yield{
     for(j <- 0 until params.tensors(i).top_pes.length)yield{
       ArrayBuffer[(Int, Int)]()
@@ -163,7 +163,7 @@ class PEArray(params: SAConfig) extends Module{
   }
   val st_time = for(i <- 0 until pe_h)yield{
     for(j <- 0 until pe_w)yield{
-      val mintime=Min_time((i, j), params.stt)
+      val mintime=new Min_time()((i, j), params.stt)
       //println("st_time="+mintime)
       mintime
     }
@@ -194,6 +194,7 @@ class PEArray(params: SAConfig) extends Module{
     val io_type = params.io_type(i)
     val inner_range = Array(latency)++params.tensors(i).time_range
     val outer_range = Array(latency)++params.tensors(i).mem_range
+    val is_reuse_dim = Array(false)++params.tensors(i).is_reuse_dim
     val outer_dim = (0 until outer_range.length).map(x=>{
       (Array(1) ++ outer_range.slice(0, x)).reduce(_*_)
     }).toArray
@@ -206,9 +207,9 @@ class PEArray(params: SAConfig) extends Module{
       
       //println("outer_range:"+outer_range.mkString(" ")+", inner_range:"+inner_range.mkString(" "))
       if(io_type) // input
-        Module(new MemController(mem_size, params.width(i), params.simd(i), params.addr_width, outer_dim, inner_dim, outer_range, inner_range, init_wr_idx, init_rd_idx)).io
+        Module(new MemController(mem_size, params.width(i), params.simd(i), params.addr_width, outer_dim, inner_dim, Array.fill(inner_range.length)(false), outer_range, inner_range, init_wr_idx, init_rd_idx)).io
       else  // output
-        Module(new MemController(mem_size, params.width(i), params.simd(i), params.addr_width, inner_dim, outer_dim, inner_range, outer_range, init_wr_idx, init_rd_idx)).io
+        Module(new MemController(mem_size, params.width(i), params.simd(i), params.addr_width, inner_dim, outer_dim, is_reuse_dim, inner_range, outer_range, init_wr_idx, init_rd_idx)).io
     }
   }
 
@@ -227,9 +228,12 @@ class PEArray(params: SAConfig) extends Module{
     if(max_delay>0)
       shiftreg(0) := io.exec_valid
     for(j <- 0 until bank_peid(i).length){
-      mem(i)(j).wr_update := false.B 
+      // when 
       val (pey, pex) = params.tensors(i).top_pes(j)
+      
+      
       if(params.io_type(i)){      // input
+        mem(i)(j).wr_update := false.B 
         if(dataflows(i)!=StationaryDataflow){   // systolic input
           val delay_time = st_time(pey)(pex)*latency
           if(delay_time>0){
@@ -250,6 +254,7 @@ class PEArray(params: SAConfig) extends Module{
         mem(i)(j).wr_data := io.data(i).in.get(j).bits
         pe_net(i)(j).to_mem := mem(i)(j).rd_data
       }else{
+        mem(i)(j).wr_update := true.B 
         mem(i)(j).wr_valid := pe_net(i)(j).to_mem.valid
         mem(i)(j).rd_valid := io.out_valid
         mem(i)(j).wr_data := pe_net(i)(j).to_mem

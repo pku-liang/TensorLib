@@ -21,6 +21,7 @@ class MemController(
     addr_width: Int,
     wr_dim: Array[Int],
     rd_dim: Array[Int],
+    is_reuse_dim : Array[Boolean],
     wr_pattern: Array[Int],
     rd_pattern: Array[Int],
     wr_init: Array[Int],
@@ -51,6 +52,19 @@ class MemController(
 
   io.rd_data := mem.rd_data
   mem.wr_data := io.wr_data
+
+  val reuse_idx = wr_time.index.zipWithIndex.filter{case(reg, idx)=>{
+    is_reuse_dim(idx)==true
+  }}.map(x=>x._1)
+  //println("num of reuse reg:"+reuse_idx.length)
+  if(reuse_idx.length==0){
+    mem.wr_update := false.B
+  }else{
+    mem.wr_update := io.wr_update && (!(VecInit(reuse_idx).forall((x: UInt)=>x===0.U)))
+    //printf(p"${wr_time.index}, REUSE:${VecInit(reuse_idx)}")
+    //printf("mem_update: %d\n", mem.wr_update)
+  }
+
 }
 // time: input bool, output time stamp, 0 cycle delay
 class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends Module{
@@ -66,6 +80,18 @@ class MultiDimTime(addr_width: Int, dim: Array[Int], init: Array[Int]) extends M
   val regs = for(i <- 0 until len)yield{
     RegInit(init(i).asUInt(addr_width.W))
   }
+  //
+  // val reuse_reg = regs.zipWithIndex.filter{case(reg, idx)=>{
+  //   is_reuse_dim(idx)==1
+  // }}.map(x=>x._1)
+  // println("num of reuse reg:"+reuse_reg.length)
+  // if(reuse_reg.length==0){
+  //   io.out_reuse := false.B
+  // }else{
+  //   io.out_reuse := !(VecInit(reuse_reg).forall(_===0.U))
+  // }
+
+  
   val back = (0 until len).map(i=>regs(i)+io.in===dim(i).asUInt)
   // if(len>2)
   //   printf("io.in: %d, regs:%d %d %d\n",io.in, regs(0),regs(1), regs(2))

@@ -15,7 +15,7 @@ import chisel3.stage.ChiselStage
 import java.io.PrintWriter
 object Example_GenConv2D extends App {
   //  Conv2D calculation algorithm
-  // definition
+  // o(k)(y)(x) += w(k)(c)(r)(s) * i(c)(y + r)(x + s)
   val opSpec = new OperatorSpec {
     val k :: c :: y :: x :: r :: s :: Nil = genIterators(6)
     val o :: w :: i :: Nil                = genTensor(3)

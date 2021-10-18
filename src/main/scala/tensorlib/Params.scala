@@ -17,6 +17,7 @@ class TensorConfig{
   var top_pes = Array[(Int, Int)]()
   var mem_dims = Array[Int]()
   var ainvt = new DenseMatrix(0, 0, Array.empty[Int])
+  var is_reuse_dim = Array[Boolean]()
 }
 class SAConfig(s: DenseMatrix[Int]){
   var pe_size = (0, 0)

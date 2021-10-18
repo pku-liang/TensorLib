@@ -33,7 +33,5 @@ object Example_GenGEMM extends App{
    (1,  1,  1),  
   )
   val config = Gen_dataflow(opSpec, stt)
-  //val top = Module(new PEArray(config)).io
   chisel3.Driver.execute(args, () => new PEArray(config))
-  //Driver(() => new PEArray(config))(c => new Test_Runner_Gemm(c, k_len, c_len, x_len, 1))
 }

@@ -23,10 +23,8 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
   var mat_out = DenseMatrix.tabulate[Int](k_len, x_len){
     case(i, j) => 0
   }
-  println("mat 1:")
-  println(mat1.toString)
-  println("mat 2:")
-  println(mat2.t.toString)
+  println("mat 1:\n"+mat1.toString)
+  println("mat 2:\n"+mat2.t.toString)
   for(i <- 0 until c_len){
     for(j <- 0 until k_len){
       poke(c.io.data(1).in.get(j).valid, true.B)

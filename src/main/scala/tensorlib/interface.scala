@@ -203,6 +203,7 @@ class OperatorSpec {
   var constVecs  = collection.mutable.Map[Int, DenseVector[Double]]()
 
   var outputID = 0
+  var opType = 0
   def getSTTRange(stt: DenseMatrix[Int]) : DenseVector[Int] = {
     val bound = iterList.map(_.ubound)
     // seq of vector
@@ -231,6 +232,9 @@ class OperatorSpec {
   }
   def setLatency(l: Int) : Unit = {
     latency = l
+  }
+  def customKernel(x: Boolean): Unit = {
+    opType = if(x) 1 else 0
   }
   // def getTimeRange(stt: DenseMatrix[Int], id:(Int, Int)) : DenseVector[Int] = {
     

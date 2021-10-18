@@ -34,7 +34,7 @@ class PE(vec: Array[Int], width: Array[Int], dataflow: Array[TensorDataflow], io
       case StationaryDataflow => if(io_type) new StationaryInput_Pipeline(width, latency) else new StationaryOutput(width, latency)
     }
   }
-  val pe = Module(new ComputeCell_Latency(vec, width(0), latency)).io
+  val pe = if(op_type==1) Module(new ComputeCell_Custom(vec, width(0), num_op, latency)).io else Module(new ComputeCell_Latency(vec, width(0), num_op, latency)).io
   val ims = for(i <- 0 until num_op) yield{
     Module(im_factory(dataflow(i), io_type(i), vec(i) * width(i), latency)).io
   }

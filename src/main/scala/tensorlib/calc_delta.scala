@@ -120,7 +120,7 @@ object Gen_dataflow{
     config.latency = opSpec.latency
     config.simd = Array.fill(opSpec.numTensor)(1)
     config.width = opSpec.tensorList.map(_.width).toArray
-    config.io_type = Array(false, true, true)
+    config.io_type = (0 until opSpec.numTensor).map(opSpec.outputID!=_).toArray//Array(false, true, true)
     config.stt = stt
     val pe_h = sttrange(0)
     val pe_w = sttrange(1)
@@ -131,13 +131,13 @@ object Gen_dataflow{
     val time_range_ns = this.get_valid_range(opSpec, stt,time_init_ns)
     val time_range_s = this.get_valid_range(opSpec, stt,time_init_s)
     val sttlen = sttrange.length
-    config.tensors = Calc_Mem(opSpec, stt).toArray
+    config.tensors = new Calc_Mem()(opSpec, stt).toArray
     config.exec_time = time_range_ns
     config
 
   }
 }
-object Min_time{
+class Min_time{
   def check(peid: (Int, Int), t1: Int, invstt: DenseMatrix[Int]) : Boolean = {
     val stt_len = invstt.rows
     val st_iter = Array(peid._1, peid._2, t1) ++ Array.fill(stt_len - 3)(0)
@@ -154,7 +154,7 @@ object Min_time{
     t1
   }
 }
-object Calc_Mem{
+class Calc_Mem{
   def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : List[TensorConfig] = {
     val sttrange = opSpec.getSTTRange(stt).toArray
     val sttlen = sttrange.length
@@ -255,6 +255,8 @@ object Calc_Mem{
 
         access_mat.delete(x, Axis._0)
       })
+      val is_reuse_dim = (0 until mem_range.length).map(mem_range(_)==1)
+      //println("reuse dim:"+is_reuse_dim.mkString(" "))
       mem_range = mem_range.filter(_!=1)
       // if(!pe_stat)
       //   mem_range = mem_range.updated(0, mem_inner)
@@ -265,7 +267,9 @@ object Calc_Mem{
       })
       var mem_dims = (access_mat.t * DenseVector(mem_range_scale.toArray)).toArray
       var dataflow = new TensorConfig()
+      // mem-reuse condition= 
       dataflow.time_range = time_range.toArray
+      dataflow.is_reuse_dim = is_reuse_dim.toArray
       dataflow.mem_range = mem_range
       dataflow.rvecs = rvecs.toArray
       dataflow.top_pes = top_pes.toArray
