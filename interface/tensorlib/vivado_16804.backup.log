@@ -1,0 +1,23 @@
+#-----------------------------------------------------------
+# Vivado v2020.2 (64-bit)
+# SW Build 3064766 on Wed Nov 18 09:12:47 MST 2020
+# IP Build 3064653 on Wed Nov 18 14:17:31 MST 2020
+# Start of session at: Wed May 26 17:25:28 2021
+# Process ID: 16804
+# Current directory: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib
+# Command line: vivado
+# Log file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.log
+# Journal file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project /home/CORP.PKUSC.ORG/kirlia/xilinx/16x10_baseline/16x10_baseline.xpr
+Scanning sources...
+Finished scanning sources
+INFO: [IP_Flow 19-234] Refreshing IP repositories
+INFO: [IP_Flow 19-1704] No user IP repositories specified
+INFO: [IP_Flow 19-2313] Loaded Vivado IP repository '/home/CORP.PKUSC.ORG/kirlia/xilinx/Vivado/2020.2/data/ip'.
+INFO: [IP_Flow 19-3899] Cannot get the environment domain name variable for the component vendor name. Setting the vendor name to 'user.org'.
+open_project: Time (s): cpu = 00:00:15 ; elapsed = 00:00:10 . Memory (MB): peak = 7550.379 ; gain = 48.094 ; free physical = 73267 ; free virtual = 149058
+update_compile_order -fileset sources_1
+exit
+INFO: [Common 17-206] Exiting Vivado at Wed May 26 17:27:37 2021...

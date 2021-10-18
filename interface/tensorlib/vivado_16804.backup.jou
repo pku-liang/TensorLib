@@ -1,0 +1,14 @@
+#-----------------------------------------------------------
+# Vivado v2020.2 (64-bit)
+# SW Build 3064766 on Wed Nov 18 09:12:47 MST 2020
+# IP Build 3064653 on Wed Nov 18 14:17:31 MST 2020
+# Start of session at: Wed May 26 17:25:28 2021
+# Process ID: 16804
+# Current directory: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib
+# Command line: vivado
+# Log file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.log
+# Journal file: /home/CORP.PKUSC.ORG/kirlia/tensorlib/tensorlib/vivado.jou
+#-----------------------------------------------------------
+start_gui
+open_project /home/CORP.PKUSC.ORG/kirlia/xilinx/16x10_baseline/16x10_baseline.xpr
+update_compile_order -fileset sources_1
