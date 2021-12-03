@@ -8,31 +8,34 @@ import chisel3.iotesters.{PeekPokeTester, Driver}
 import java.io.PrintWriter
 import breeze.linalg._
 
-object Example_GenGEMM extends App{
+object Block_GEMM extends App{
   
-  val k_len = 4
-  val c_len = 10
-  val x_len = 4
+  val k_len = 15
+  val c_len = 128
+  val x_len = 11
   
   val opSpec = new OperatorSpec {
-    val k :: c :: x :: Nil = genIterators(3)
+    val k :: m :: n :: om :: on :: Nil = genIterators(5)
     val o :: w :: i :: Nil = genTensor(3)
-
-    setExpr(o(k)(x) += w(k)(c) * i(c)(x))
-    k.setRange(k_len)
-    c.setRange(c_len)
-    x.setRange(x_len)
+    // 
+    setExpr(o(om)(on)(m)(n) += w(om)(m)(k) * i(on)(k)(n))
+    k.setRange(64)
+    m.setRange(8)
+    n.setRange(8)
+    om.setRange(8)
+    on.setRange(8)
     setLatency(1)
     o.setWidth(16)
     w.setWidth(16)
     i.setWidth(16)
-    
-    //useCustomKernel(true)
   }
   val stt = DenseMatrix(
-   (1,  0,  0),  
-   (0,  0,  1),  
-   (1,  1,  1),  
+   
+   (0,  1,  0,  0,  0),  
+   (0,  0,  1,  0,  0),  
+   (1,  1,  1,  0,  0),  
+   (0,  0,  0,  1,  0),
+   (0,  0,  0,  0,  1)
   )
   val config = Gen_dataflow(opSpec, stt)
   chisel3.Driver.execute(args, () => new PEArray(config))

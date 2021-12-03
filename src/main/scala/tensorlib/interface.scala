@@ -203,7 +203,11 @@ class OperatorSpec {
   var constVecs  = collection.mutable.Map[Int, DenseVector[Double]]()
 
   var outputID = 0
-  var opType = 0
+  var op_type = 0
+  var custom_mem = 0
+  def getIterRange() : Array[Int] = {
+    iterList.map(_.ubound).toArray
+  }
   def getSTTRange(stt: DenseMatrix[Int]) : DenseVector[Int] = {
     val bound = iterList.map(_.ubound)
     // seq of vector
@@ -234,7 +238,13 @@ class OperatorSpec {
     latency = l
   }
   def useCustomKernel(x: Boolean): Unit = {
-    opType = if(x) 1 else 0
+    op_type = if(x) 1 else 0
+  }
+  def useMTTKRP(x: Int): Unit = {
+    op_type = x
+  }
+  def useCustomMem(x: Boolean): Unit = {
+    custom_mem = if(x) 1 else 0
   }
   // def getTimeRange(stt: DenseMatrix[Int], id:(Int, Int)) : DenseVector[Int] = {
     

@@ -2,48 +2,51 @@ package tensorlib
 
 import chisel3._
 import chisel3.util._
-import scala.math.log10
+import scala.math._
 import chisel3.stage.ChiselStage
 //import chisel3.Driver
 import chisel3.iotesters.{PeekPokeTester, Driver}
 import java.io.PrintWriter
 class AddTree(len: Int, width: Int) extends Module{
-  def treedep(k: Int): Int = (log10(k-1)/log10(2)).toInt+1
+  def treedep(k: Int): Int = max((log10(k-1)/log10(2)).toInt, 0)+1
   val io = IO(new Bundle{
     val in = Input(Valid(Vec(len, UInt(width.W))))
     val out = Output(Valid(UInt(width.W)))
   })
-  val dep=treedep(len)
-  var newlen=len
-  val valids = RegInit(VecInit(Seq.fill(dep)(false.B)))
-  valids(0) := io.in.valid
-  for(i <- 1 until dep){
-    valids(i) := valids(i-1)
-  }
-  val regs=for(i <- 0 until dep) yield{
-    newlen=(newlen-1)/2+1
-    Reg(Vec(newlen, UInt(width.W)))
-  }
-  newlen=(len-1)/2+1
-  for(j <- 0 until newlen){
-    if(j*2+1<len){
-      regs(0)(j):=io.in.bits(j*2)+io.in.bits(j*2+1)
-    }else{
-      regs(0)(j):=io.in.bits(j*2)
-    }
-  }
-  for(i <- 1 until dep){
-    for(j <- 0 until (newlen-1)/2+1){
-      if(j*2+1<newlen){
-        regs(i)(j):=regs(i-1)(j*2)+regs(i-1)(j*2+1)
-      }else{
-        regs(i)(j):=regs(i-1)(j*2)
-      }
-    }
-    newlen=(newlen-1)/2+1
-  }
-  io.out.bits:=regs(dep-1)(0)
-  io.out.valid := valids(dep-1)
+  io.out.bits := io.in.bits.reduce(_+_)
+  io.out.valid := io.in.valid
+  // val dep=treedep(len)
+  // println("len"+len+",tree dep:"+dep)
+  // var newlen=len
+  // val valids = RegInit(VecInit(Seq.fill(dep)(false.B)))
+  // valids(0) := io.in.valid
+  // for(i <- 1 until dep){
+  //   valids(i) := valids(i-1)
+  // }
+  // val regs=for(i <- 0 until dep) yield{
+  //   newlen=(newlen-1)/2+1
+  //   RegInit(0.U.asTypeOf(Vec(newlen, UInt(width.W))))
+  // }
+  // newlen=(len-1)/2+1
+  // for(j <- 0 until newlen){
+  //   if(j*2+1<len){
+  //     regs(0)(j):=io.in.bits(j*2)+io.in.bits(j*2+1)
+  //   }else{
+  //     regs(0)(j):=io.in.bits(j*2)
+  //   }
+  // }
+  // for(i <- 1 until dep){
+  //   for(j <- 0 until (newlen-1)/2+1){
+  //     if(j*2+1<newlen){
+  //       regs(i)(j):=regs(i-1)(j*2)+regs(i-1)(j*2+1)
+  //     }else{
+  //       regs(i)(j):=regs(i-1)(j*2)
+  //     }
+  //   }
+  //   newlen=(newlen-1)/2+1
+  // }
+  // io.out.bits:=regs(dep-1)(0)
+  // io.out.valid := valids(dep-1)
 }
 class DecBundle(width: Int) extends Bundle{
   val bits = UInt(width.W)
@@ -66,7 +69,7 @@ class InternalModule(width: Int, stat: Boolean, output: Boolean) extends Module{
     val port = new PETensorIO(width, stat)
     val from_cell = if(output) Some(Input(Valid(UInt(width.W)))) else None
     val to_cell = Output(Valid(UInt(width.W)))
-    val sig_stat2trans = if(stat) Some(Input(Bool())) else None
+    //val sig_stat2trans = if(stat) Some(Input(Bool())) else None
   })
 }
 object InternalModule{
@@ -149,7 +152,7 @@ class StationaryInput_Pipeline(width: Int, latency: Int) extends InternalModule(
   when(write_trans_pos===(latency-1).asUInt && trans.valid){
     update.valid := true.B
   }
-  reg_stat2trans(0) := io.sig_stat2trans.get
+  reg_stat2trans(0) := io.port.sig_stat2trans.get
   for(i <- 1 until latency+1){
     reg_stat2trans(i) := reg_stat2trans(i-1)
   }
@@ -177,7 +180,7 @@ class StationaryOutput(width: Int, latency: Int) extends InternalModule(width, t
   val trans_move_fin = RegInit(false.B)
   val trans_out_valid = RegInit(false.B)
   val reg_stat2trans = RegInit(false.B)
-  reg_stat2trans := io.sig_stat2trans.get
+  reg_stat2trans := io.port.sig_stat2trans.get
   // write to trans buffer
   trans.enq.bits := io.from_cell.get.bits
   trans.enq.valid := reg_stat2trans&&io.from_cell.get.valid
@@ -201,7 +204,7 @@ class StationaryOutput(width: Int, latency: Int) extends InternalModule(width, t
 class StationaryOutput_OutCell(width: Int, latency: Int) extends InternalModule(width, true, true){
   // start from 0, latency cycles
   val reg_stat2trans = RegInit(false.B)
-  reg_stat2trans := io.sig_stat2trans.get
+  reg_stat2trans := io.port.sig_stat2trans.get
   //stat := io.from_cell
   //printf("pe out: %d %d\n",io.from_cell.get.bits, io.from_cell.get.valid)
   when(reg_stat2trans){

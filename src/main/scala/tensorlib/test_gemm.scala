@@ -12,12 +12,12 @@ import breeze.linalg._
 class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: Int) extends PeekPokeTester(c){
   val r = new scala.util.Random
   val mat1 = DenseMatrix.tabulate[Int](k_len, c_len){
-    case(i, j)=> r.nextInt(10)+1
+    case(i, j)=> 1//r.nextInt(10)+1
   }
   val mat2 = DenseMatrix.tabulate[Int](x_len, c_len){
-    case(i, j)=> r.nextInt(10)+1
+    case(i, j)=> 1//r.nextInt(10)+1
   }
-  
+
   
   val mat_ref = mat1 * mat2.t
   var mat_out = DenseMatrix.tabulate[Int](k_len, x_len){
@@ -25,6 +25,7 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
   }
   println("mat 1:\n"+mat1.toString)
   println("mat 2:\n"+mat2.t.toString)
+  println("reference result:\n"+mat_ref.toString)
   for(i <- 0 until c_len){
     for(j <- 0 until k_len){
       poke(c.io.data(1).in.get(j).valid, true.B)
@@ -38,6 +39,7 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
     }
     poke(c.io.exec_valid, false.B)
     poke(c.io.out_valid, false.B)
+    println()
     step(1)
   }
   for(i <- 0 until c_len+k_len+x_len){
@@ -53,6 +55,7 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
     }
     poke(c.io.exec_valid, true.B)
     poke(c.io.out_valid, false.B)
+    println()
     step(1)
   }
 
@@ -69,6 +72,7 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
     }
     poke(c.io.exec_valid, false.B)
     poke(c.io.out_valid, false.B)
+    println()
     step(1)
   }
   var out_col = 0
@@ -89,14 +93,14 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
         mat_out(j, out_col/x_len) = peek(c.io.data(0).out.get(j).bits).toInt
         out_col = out_col + 1
       }
-      //print(peek(c.io.data(0).out.get(j).bits)+" ")
+      print(peek(c.io.data(0).out.get(j).bits)+" ")
     }
-    //println()
+    println()
     poke(c.io.exec_valid, false.B)
     poke(c.io.out_valid, true.B)
     step(1)
   }
-  println("reference result:\n"+mat_ref.toString)
+  
   println("hardware output:\n"+mat_out.toString)
   if(mat_ref == mat_out){
     println("result match")
@@ -104,32 +108,62 @@ class Test_Runner_Gemm(c: PEArray,k_len: Int, c_len: Int, x_len: Int, latency: I
     println("failed")
   }
 }
-object Test_Gemm extends App{
+// object Test_Gemm extends App{
   
-  val k_len = 4
-  val c_len = 10
-  val x_len = 4
+//   val k_len = 4
+//   val c_len = 10
+//   val x_len = 4
   
-  val opSpec = new OperatorSpec {
-    val k :: c :: x :: Nil = genIterators(3)
-    val o :: w :: i :: Nil = genTensor(3)
+//   val opSpec = new OperatorSpec {
+//     val k :: c :: x :: Nil = genIterators(3)
+//     val o :: w :: i :: Nil = genTensor(3)
 
-    setExpr(o(k)(x) += w(k)(c) * i(c)(x))
-    k.setRange(k_len)
-    c.setRange(c_len)
-    x.setRange(x_len)
-    setLatency(1)
-    o.setWidth(16)
-    w.setWidth(16)
-    i.setWidth(16)
-  }
-  val stt = DenseMatrix(
-   (1,  0,  0),  
-   (0,  0,  1),  
-   (1,  1,  1),  
-  )
-  val config = Gen_dataflow(opSpec, stt)
-  //val top = Module(new PEArray(config)).io
-  //chisel3.Driver.execute(args, () => new PEArray(config))
-  Driver(() => new PEArray(config))(c => new Test_Runner_Gemm(c, k_len, c_len, x_len, 1))
-}
+//     setExpr(o(k)(x) += w(k)(c) * i(c)(x))
+//     k.setRange(k_len)
+//     c.setRange(c_len)
+//     x.setRange(x_len)
+//     setLatency(1)
+//     o.setWidth(16)
+//     w.setWidth(16)
+//     i.setWidth(16)
+//   }
+//   val stt = DenseMatrix(
+//    (1,  0,  0),  
+//    (0,  0,  1),  
+//    (1,  1,  1),  
+//   )
+//   val config = Gen_dataflow(opSpec, stt)
+//   //val top = Module(new PEArray(config)).io
+//   //chisel3.Driver.execute(args, () => new PEArray(config))
+//   Driver(() => new PEArray(config))(c => new Test_Runner_Gemm(c, k_len, c_len, x_len, 1))
+// }
+
+object Test_Gemm extends App{
+
+   val k_len = 4
+   val c_len = 12
+   val x_len = 4
+
+   val opSpec = new OperatorSpec {
+     val k :: c :: x :: Nil = genIterators(3)
+     val o :: w :: i :: Nil = genTensor(3)
+
+     setExpr(o(k)(x) += w(k)(c) * i(c)(x))
+     k.setRange(k_len)
+     c.setRange(c_len)
+     x.setRange(x_len)
+     setLatency(1)
+     o.setWidth(16)
+     w.setWidth(16)
+     i.setWidth(16)
+   }
+   val stt = DenseMatrix(
+    (1,  0,  0),
+    (0,  0,  1),
+    (1,  1,  1),
+   )
+   val config = Gen_dataflow(opSpec, stt)
+   //val top = Module(new PEArray(config)).io
+   //chisel3.Driver.execute(args, () => new PEArray(config))
+   Driver(() => new PEArray(config))(c => new Test_Runner_Gemm(c, k_len, c_len, x_len,  1))
+ }

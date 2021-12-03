@@ -5,7 +5,7 @@ import breeze.numerics._
 
 import math.abs
 import math.round
-
+import scala.math.{max, min}
 object TestMat{
   import scala.collection.mutable.Set
   
@@ -57,7 +57,7 @@ object TestMat{
 object CalcDelta {
   def apply(matA: DenseMatrix[Int], matT: DenseMatrix[Int]) = {
     val matB = matA.mapValues(_.toDouble) * inv(matT.mapValues(_.toDouble))
-    //println("at-1:\n"+matB)
+    println("at-1:\n"+matB)
     // val matZ = DenseMatrix.eye[Double](matB.cols) - pinv(matB) * matB
     val d = scala.collection.mutable.ArrayBuffer.empty[DenseVector[Double]]
 
@@ -65,97 +65,109 @@ object CalcDelta {
       if (n == matB.cols)
         new DenseVector[Double](x.reverse) :: Nil
       else
-       gen(n + 1, x :+ 0.0) ++ gen(n + 1, x :+ 1.0) ++ gen(n + 1, x :+ -1.0)
+       gen(n + 1, x :+ 0.0) ++ gen(n + 1, x :+ 1.0) ++ gen(n + 1, x :+ -1.0)// ++ gen(n + 1, x :+ 2.0)
     }
 
-    val testers = gen(0, Array.empty[Double])
+    val testers = gen(0, Array.empty[Double]).filter(x=>{
+      val y = x.mapValues(_.toInt)
+      y(2) != -1 && (y(0)==0||y(1)==0)    // no diagonal connection
+    })
     // .filter(x=>{
     //   val y = x.mapValues(_.toInt).toArray
     //   (y(0)|y(1))==0 || (Array(0)++y.drop(3)).reduce(_|_)==0
     // })
-    for (v <- testers) {
-      //if (!d.exists((u) => math.abs(u dot v) > 1e-5)) {
-      val y  = matB * v
-      val ny = norm(y)
-      val nv = norm(v)
-      val dv = d :+ v
-      val dv_mat = DenseMatrix.tabulate[Double](dv.length, v.length){
-        case(i, j) => dv(i)(j)
+    val df_tester = testers.filter(x=>{
+      val y = x.mapValues(_.toInt).toArray
+      (Array(0) ++ y.drop(3)).reduce(_|_)==0
+    }).sortWith(_(2)>_(2))
+    val mem_tester = testers.filter(x=>{
+      val y = x.mapValues(_.toInt).toArray
+      (y(0)|y(1))==0
+    })
+    for (t <- Array(df_tester, mem_tester, testers)){
+      for (v <- t) {
+        //if (!d.exists((u) => math.abs(u dot v) > 1e-5)) {
+        val y  = matB * v
+        val ny = norm(y)
+        val nv = norm(v)
+        val dv = d :+ v
+        val dv_mat = DenseMatrix.tabulate[Double](dv.length, v.length){
+          case(i, j) => dv(i)(j)
+        }
+        if(ny < 1e-5 && nv > 1e-5 && rank(dv_mat)==dv_mat.rows)
+            d += v
       }
-      if(ny < 1e-5 && nv > 1e-5 && rank(dv_mat)==dv_mat.rows)
-          d += v
     }
+    
+    
     //println(d.map(x=>x.mapValues(_.toInt)))
     // if (matT.rows - rank(matB) != d.length)
     //   throw new Exception("Can not extract valid dataflows")
-    d.map(x=>x.mapValues(_.toInt))
+    // d.foreach(println(_))
+    // println()
+    val r = d.map(x=>x.mapValues(_.toInt))
+    println("reuse vector:"+r)
+    r 
   }
 }
 
 object Gen_dataflow{
-  def get_valid_range(opSpec: OperatorSpec, stt: DenseMatrix[Int], time_init: Array[Int]) : Array[Int] = {
 
-    val sttrange = opSpec.getSTTRange(stt).toArray
-    val valid_time = TraverseTensor(time_init).filter(x=>{
-      val stt_inst = Array(0, 0) ++ x//.asInstanceOf[Array[Int]]
-      val iter_inst = inv(stt).mapValues(_.toInt) * DenseVector[Int](stt_inst)
-      iter_inst.toArray.zipWithIndex.forall{case (a, b)=>{
-        a>=0 && a < opSpec.iterList(b).ubound
-      }}
-    })
-    val time_range = (0 until sttrange.length-2).map(i=>{
-      valid_time.map(_(i)+1).reduce(_ max _)
-    })
-    //println("time_range:" + time_range.mkString(" "))
-    time_range.toArray
-  }
-  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : SAConfig = {
+  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int],rotate: Boolean = false) : SAConfig = {
     println("[Tensorlib] Generating Dataflow.")
     val config = new SAConfig(stt)
 
     val sttrange = opSpec.getSTTRange(stt).toArray
     config.num_op = opSpec.numTensor
     config.pe_size = (sttrange(0), sttrange(1))
-    
+    config.iter_range = opSpec.getIterRange()
     config.latency = opSpec.latency
-    config.simd = Array.fill(opSpec.numTensor)(1)
+    //config.simd = Array(8,1,8)//Array.fill(opSpec.numTensor)(1)
     config.width = opSpec.tensorList.map(_.width).toArray
     config.io_type = (0 until opSpec.numTensor).map(opSpec.outputID!=_).toArray//Array(false, true, true)
     config.stt = stt
+    config.op_type = opSpec.op_type
+    config.custom_mem = opSpec.custom_mem
+    println("op type: "+config.op_type)
     val pe_h = sttrange(0)
     val pe_w = sttrange(1)
     val pes = (0 until pe_h*pe_w).map(x=>(x/pe_w,x%pe_w))
-    //println(pes)
-    val time_init_ns = sttrange.drop(2)
-    val time_init_s = time_init_ns.updated(0, pe_w)
-    val time_range_ns = this.get_valid_range(opSpec, stt,time_init_ns)
-    val time_range_s = this.get_valid_range(opSpec, stt,time_init_s)
     val sttlen = sttrange.length
-    config.tensors = new Calc_Mem()(opSpec, stt).toArray
-    config.exec_time = time_range_ns
+    config.tensors = Calc_Mem(opSpec, stt, rotate).toArray
+    config.exec_time = config.tensors.map(_.exec_time).reduce{(x: Array[Int], y: Array[Int])=>
+      (x zip y).map{case(t, v)=>max(t, v)}
+    }.toArray
+    config.start_t0 = config.tensors.map(_.start_t0).reduce(_ min _)
+    println(s"start t0 = ${config.start_t0}")
     config
 
   }
 }
-class Min_time{
-  def check(peid: (Int, Int), t1: Int, invstt: DenseMatrix[Int]) : Boolean = {
-    val stt_len = invstt.rows
-    val st_iter = Array(peid._1, peid._2, t1) ++ Array.fill(stt_len - 3)(0)
-    val iter =  invstt * DenseVector(st_iter)
-    //println(t1, st_iter, iter)
-    iter.toArray.forall(_>=0)
-  }
-  def apply(peid: (Int, Int), stt: DenseMatrix[Int]): Int = {
-    val invstt = inv(stt.mapValues(_.toDouble)).mapValues(_.toInt)
-    var t1 = -1
-    while(!check(peid, t1, invstt)){
-      t1 = t1 + 1
+
+object Mem_bound{
+  def apply(peid: (Int, Int), ainvt: DenseMatrix[Int], tensor_range: Array[Int]): (Int, Int) = {
+    val sttlen = ainvt.cols
+    val base_tvec = new DenseVector(Array(peid._1, peid._2) ++ Array.fill(sttlen-2)(0))
+    val base_ivec = (ainvt * base_tvec).toArray
+    val time_tvec = new DenseVector(Array(0, 0, 1) ++ Array.fill(sttlen-3)(0))
+    val time_ivec = (ainvt * time_tvec).toArray
+    var up_bound = tensor_range.reduce(_+_)
+    var low_bound = -up_bound
+    // println("base ivec:"+base_ivec.mkString(" "))
+    // println("time ivec:"+time_ivec.mkString(" "))
+    // println("iter_range:"+iter_range)
+    for(i <- 0 until tensor_range.length){
+      if(time_ivec(i)!=0){
+        up_bound = min(up_bound, (tensor_range(i) - base_ivec(i))/time_ivec(i))
+        low_bound = max(low_bound, -base_ivec(i) / time_ivec(i))
+      }
     }
-    t1
+    //println(s"$peid, $up_bound, $low_bound")
+    (low_bound, up_bound)
   }
 }
-class Calc_Mem{
-  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int]) : List[TensorConfig] = {
+object Calc_Mem{
+  def apply(opSpec: OperatorSpec, stt: DenseMatrix[Int], rotate: Boolean = false) : List[TensorConfig] = {
     val sttrange = opSpec.getSTTRange(stt).toArray
     val sttlen = sttrange.length
     //println("sttrange:"+sttrange.mkString(" "))
@@ -164,71 +176,37 @@ class Calc_Mem{
     val pes = (0 until pe_h*pe_w).map(x=>(x/pe_w,x%pe_w))
     val time_init_ns = sttrange.drop(2)
     val time_init_s = time_init_ns.updated(0, pe_w)
-    //println("time_init:"+time_init_ns.mkString(" "))
-    val time_range_ns = Gen_dataflow.get_valid_range(opSpec, stt,time_init_ns)
-    val time_range_s = Gen_dataflow.get_valid_range(opSpec, stt,time_init_s)
+    //val time_range_ns = Gen_dataflow.get_valid_range(opSpec, stt,time_init_ns)
+    //val time_range_s = Gen_dataflow.get_valid_range(opSpec, stt,time_init_s)
+    val invstt = inv(stt.mapValues(_.toDouble)).mapValues(_.toInt)
     //println(time_range_ns.mkString(" "),"|", time_range_s.mkString(" "))
     val config = opSpec.tensorList.map(ts=>{
 
       val rvecs = CalcDelta(opSpec.getAccessMat(ts).mapValues(_.toInt),stt)
-      val ainvt = (opSpec.getAccessMat(ts).mapValues(_.toDouble) * inv(stt.mapValues(_.toDouble))).mapValues(_.toInt)
-      //println(rvecs)
+      val ainvt = opSpec.getAccessMat(ts).mapValues(_.toInt) * invstt
       val stat_vec = rvecs.filter(x=>{(x.length <= 3 || x(3 to -1).reduce(_ | _)==0) && x(0)==0 && x(1)==0})
       val pe_stat = stat_vec.length!=0
-      //println("pe_stat:"+pe_stat)
+      val pe_rvecs_pre = rvecs.filter(x=>{x.length <= 3 || x(3 to -1).reduce(_ | _)==0})
+      val can_rotate = rotate && pe_rvecs_pre.length==2
+      val pe_rvecs = if(can_rotate) Array(rvecs(0)) else rvecs.filter(x=>{x.length <= 3 || x(3 to -1).reduce(_ | _)==0}).toArray
+      println("rvecs"+pe_rvecs_pre)
+      // .map(x=>{
+      //   var upd = x
+      //   if (x(0)==0&&x(1)==0){
+      //     upd(1) = 1
+      //   }
+      //   upd
+      // })
+      val mem_rvec_pre = rvecs.filter(x=>{x.length > 3 && x(0 to 1).reduce(_ | _)==0 && x(3 to -1).reduce(_|_)!=0}).toArray
+      val mem_rvec = if(can_rotate) Array(rvecs(1)) ++ mem_rvec_pre else mem_rvec_pre
 
-      //println("time_range:"+time_range_s.mkString(" ")+","+time_range_ns.mkString(" "))
-      val pe_rvec = rvecs.filter(x=>{x.length <= 3 || x(3 to -1).reduce(_ | _)==0}).map(_.toArray)
-      .map(x=>{
-        var upd = x
-        if (x(0)==0&&x(1)==0){
-          upd(1) = 1
-        }
-        upd
-      })
-
-      // mem reuse vector
-      val mem_rvec = rvecs.filter(x=>{x.length > 3 && x(0 to 1).reduce(_ | _)==0 && x(3 to -1).reduce(_|_)!=0})
-      //val inter_rvec =
-      var top_pes = pes
-      //println("top_pes:"+top_pes.length)
-      pe_rvec.foreach(x=>{
-        
-        val dir = (x(0), x(1))
-        top_pes=top_pes.filter(idx=>{idx._1 - dir._1 < 0 || idx._1 - dir._1 >= pe_h || idx._2 - dir._2 < 0 || idx._2 - dir._2 >= pe_w})
-      })
-      //println("top_pes:"+top_pes)
-      val peid = top_pes(0)
-      val tensor_range = opSpec.getAddrRange(ts).toArray
-      //println("tensor range:"+tensor_range.mkString(" "))
-      //给定TOP PEID，寻找这个PEID对应的t1的最大和最小值（在这个时间可以获取有效的数据）
-      val max_t = 200
-      val min_t = -200
-      var st_t = 0
-      var ed_t = 0
-      for(i <- min_t until max_t){
-        val st_vec = new DenseVector(Array(peid._1, peid._2, i) ++ Array.fill(sttlen-3)(0))
-        val tensor_idx = (ainvt * st_vec).toArray
-        val v=(tensor_idx zip tensor_range).forall{case(idx, r)=>{
-          idx >= 0 && idx < r
-        }}
-        val st_vec_next = new DenseVector(Array(peid._1, peid._2, i+1) ++ Array.fill(sttlen-3)(0))
-
-        val tensor_idx_next = (ainvt * st_vec_next).toArray
-        val v_next=(tensor_idx_next, tensor_range).zipped.forall{case(idx, r)=>{
-          idx >= 0 && idx < r
-        }}
-        if(!v && v_next)
-          st_t = i
-        if(v &&(!v_next))
-          ed_t = i
-      }
-      //print("INNER LOOP:",ed_t, st_t)
-      val mem_inner = ed_t - st_t
-      val time_range = if(pe_stat) time_range_s else time_range_ns.updated(0, mem_inner)
+      // 确定不需要的dimension并删除
+      val time_range = if(pe_stat) time_init_s else time_init_ns
+      println("time range: "+time_range.mkString(" "))
       var mem_range = time_range.clone()
       var access_mat = DenseMatrix.eye[Int](mem_range.length)
       mem_rvec.foreach(x=>{
+        println(s"x:$x")
         val a = x.toArray.drop(2)
         val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
           x!=0
@@ -240,10 +218,8 @@ class Calc_Mem{
           mem_range(id) = mem_range(id) + (mem_range(last_id._2)-1) * a_m1(id)
           access_mat(id,last_id._2) += a_m1(id)
         }}
-        mem_range(last_id._2) = 1
+        mem_range(last_id._2) = 0
       })
-      //println("time range: "+time_range.mkString(" "))
-      //println("mem range_st: "+mem_range.mkString(" "))
       val rm_dims = mem_rvec.map(x=>{
         val a = x.toArray.drop(2)
         val last_id = a.zipWithIndex.reverse.find{case(x, id)=>{
@@ -252,38 +228,93 @@ class Calc_Mem{
         last_id._2
       }).sortWith(_>_)
       rm_dims.foreach(x=>{
-
-        access_mat.delete(x, Axis._0)
+        access_mat = access_mat.delete(x, Axis._0)
       })
-      val is_reuse_dim = (0 until mem_range.length).map(mem_range(_)==1)
-      //println("reuse dim:"+is_reuse_dim.mkString(" "))
-      mem_range = mem_range.filter(_!=1)
+      //println(s"rm_dims:${rm_dims},access mat:$access_mat")
+      val is_reuse_dim = (0 until mem_range.length).map(mem_range(_)==0)
+      mem_range = mem_range.filter(_!=0)
+      var top_pes = pes
+      //println("top_pes:"+top_pes.length)
+      pe_rvecs.foreach(x=>{
+        
+        val dir = if(x(0)==0&&x(1)==0) (0, 1) else (x(0), x(1))
+        top_pes=top_pes.filter(idx=>{idx._1 - dir._1 < 0 || idx._1 - dir._1 >= pe_h || idx._2 - dir._2 < 0 || idx._2 - dir._2 >= pe_w})
+      })
+      //println("top_pes:"+top_pes)
+      val tensor_range = opSpec.getAddrRange(ts).toArray
+      //println("tensor range:"+tensor_range.mkString(" "))
+      //给定TOP PEID，寻找这个PEID对应的t1的最大和最小值（在这个时间可以获取有效的数据）
+      // 对每个top peid，寻找t1的最小值和最大值，作为memory size
+      val bounds = for(peid <- top_pes) yield{
+        Mem_bound(peid, ainvt, tensor_range)
+      }
+      var time_range_max = if(pe_stat) 0 else bounds.map{x=>x._2-x._1}.reduce(_ max _)
+      val start_t0 = if(pe_stat) 0 else bounds.map(x=>x._1).reduce(_ min _)
+      // println("mem range_st: "+mem_range.mkString(" "))
+      
+      
       // if(!pe_stat)
       //   mem_range = mem_range.updated(0, mem_inner)
-      //println("mem range: "+mem_range.mkString(" "))
-      //println("RM: "+rm_dims.mkString(" "))
-      val mem_range_scale = (0 until time_range.length).map(x=>{
-        (Array(1) ++ mem_range.slice(0, x)).reduce(_*_)
-      })
-      var mem_dims = (access_mat.t * DenseVector(mem_range_scale.toArray)).toArray
+      println("mem range: "+mem_range.mkString(" ")+" "+top_pes.length)
+      val mem_dims = for((peid, bound) <- (top_pes zip bounds))yield{
+        val pe_time_range = if(pe_stat) time_init_ns.updated(0, pe_w) else time_init_ns.updated(0, bound._2-bound._1)
+        //val mem_inner_range = if(pe_stat) time_init_ns.updated(0, pe_w) else time_range.updated(0, bound._2-bound._1)
+        val pe_mem_range = (access_mat * DenseVector(pe_time_range)).toArray
+        val mem_range_scale = (0 until time_range.length).map(x=>{
+          (Array(1) ++ pe_mem_range.slice(0, x)).reduce(_*_)
+        }).toArray
+        //val mem_dims = (access_mat.t * DenseVector(mem_range_scale.toArray)).toArray
+        //println(s"pe_time_range: ${pe_time_range.mkString(" ")},mem_range: ${pe_mem_range.mkString(" ")}")
+        (pe_time_range, pe_mem_range, mem_range_scale)
+        
+      }
+      
+      
       var dataflow = new TensorConfig()
       // mem-reuse condition= 
-      dataflow.time_range = time_range.toArray
+      // time range是取memory的range，mem_range是memory本身的range
+      dataflow.start_t0 = start_t0
+      
+      dataflow.exec_time = time_init_ns.updated(0, time_range_max)
+      println("dataflow exec time:"+dataflow.exec_time.mkString(" "))
       dataflow.is_reuse_dim = is_reuse_dim.toArray
-      dataflow.mem_range = mem_range
+      dataflow.pe_rvecs = pe_rvecs
       dataflow.rvecs = rvecs.toArray
-      dataflow.top_pes = top_pes.toArray
-      dataflow.mem_dims = mem_dims
       dataflow.ainvt = ainvt
+      dataflow.top_pes = top_pes.toArray
+      dataflow.time_range = mem_dims.map(_._1)
+      dataflow.mem_range = mem_dims.map(_._2)
+      dataflow.mem_dims = mem_dims.map(_._3)
+      dataflow.tensor_range = tensor_range
+      dataflow.rotate = can_rotate
       dataflow
     })
+    config.foreach(c=>{
+      print(c.mem_range.map(r=>r.reduce(_*_)).reduce(_+_)+" ")
+    })
+    println()
     //val bank_mult = config.map(y=>y.reduce(_*_))
     //val res = bank_mult.map(x=>x.reduce(_+_))
     //println("size: "+config.map(x=>x.mem_range.reduce(_*_)*x.top_pes.length).reduce(_+_))
     //println("num: "+config.map(x=>x.top_pes.length).reduce(_+_))
-    val t_size = config.map(x=>x.mem_range.reduce(_*_)*x.top_pes.length).reduce(_+_)
-    val t_band = config.map(x=>x.top_pes.length).reduce(_+_)
-    //println(t_size+","+t_band)
+    //val t_size = config.map(x=>x.mem_range.reduce(_*_)*x.top_pes.length).toArray
+    //val t_band = config.map(x=>x.top_pes.length).reduce(_+_)
+    //println("size:"+t_size.mkString(" "))
     config
+  }
+}
+object Name_Dataflow{
+  def apply(rvec: Array[Int]) : TensorDataflow = {
+    val xy_diff = rvec(0)!=0||rvec(1)!=0
+    val t_diff = rvec(2)!=0
+    //var res = TensorDataflow
+    val df = if(!xy_diff && t_diff){
+      StationaryDataflow
+    }else if(xy_diff && t_diff){
+      SystolicDataflow
+    }else{
+      DirectDataflow
+    }
+    df
   }
 }
